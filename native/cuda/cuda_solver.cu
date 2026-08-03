@@ -330,7 +330,9 @@ CudaSolveResult CudaPcgSolver::solve(const Vector& hostRhs) {
                         static_cast<std::size_t>(impl_->dimension) * sizeof(double),
                         cudaMemcpyDeviceToHost));
   result.transferMilliseconds += elapsedMilliseconds(transferStart);
-  result.report.relativeResidual = relativeResidual(impl_->hostMatrix, result.solution, hostRhs);
+  const double rhsScale = std::max(hostRhs.norm(), 1e-30);
+  result.report.relativeResidual =
+      (impl_->hostMatrix * result.solution - hostRhs).norm() / rhsScale;
   result.report.converged =
       converged && result.report.relativeResidual <= impl_->options.tolerance * 20.0;
   result.report.iterations = iteration;
