@@ -48,7 +48,11 @@ test("the guided story renders, advances, and stays within the viewport", async 
 test("keyboard and reduced-motion paths remain usable", async ({
   browser,
   baseURL,
-}) => {
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "The five-viewport story test already covers layout; exercise this accessibility path once.",
+  );
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     reducedMotion: "reduce",

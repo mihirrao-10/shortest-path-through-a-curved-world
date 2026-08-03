@@ -2,7 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 30_000,
+  // WebGL under software rendering can be substantially slower on shared CI
+  // runners even when interaction remains correct.
+  timeout: 60_000,
   expect: { timeout: 8_000 },
   fullyParallel: true,
   forbidOnly: true,
