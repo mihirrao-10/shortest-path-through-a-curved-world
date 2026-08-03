@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="An interactive C++ and CUDA exploration of how heat reveals geodesic paths across complex 3D surfaces."
+    />
+    <meta name="theme-color" content="#09151a" />
+    <meta
+      property="og:title"
+      content="The Shortest Path Through a Curved World"
+    />
+    <meta
+      property="og:description"
+      content="How heat reveals the shortest route across a complex 3D surface."
+    />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:url"
+      content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/"
+    />
+    <meta property="og:image" content="project-preview.png" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <title>The Shortest Path Through a Curved World</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#story">Skip to the story</a>
+    <header class="site-header" aria-label="Project header">
+      <a
+        href="https://mihirrao-10.github.io/"
+        aria-label="Back to Mihir Rao's home page"
+        >MR</a
+      >
+      <span>Shortest path / curved world</span>
+      <span id="chapter-indicator" aria-live="polite">01 / Arrival</span>
+    </header>
+
+    <aside class="progress-rail" aria-label="Story progress">
+      <span class="progress-line"><i id="progress-fill"></i></span>
+      <ol>
+        <li>
+          <a href="#arrival" aria-label="Arrival"><span></span></a>
+        </li>
+        <li>
+          <a href="#straight-line" aria-label="Why a straight line fails"
+            ><span></span
+          ></a>
+        </li>
+        <li>
+          <a href="#triangles" aria-label="What the computer sees"
+            ><span></span
+          ></a>
+        </li>
+        <li>
+          <a href="#release-heat" aria-label="Release heat"><span></span></a>
+        </li>
+        <li>
+          <a href="#direction" aria-label="Heat becomes direction"
+            ><span></span
+          ></a>
+        </li>
+        <li>
+          <a href="#mathematics" aria-label="The mathematics"><span></span></a>
+        </li>
+        <li>
+          <a href="#scale" aria-label="Computation at scale"><span></span></a>
+        </li>
+      </ol>
+    </aside>
+
+    <div
+      id="world-stage"
+      class="world-stage"
+      aria-label="Interactive curved world visualization"
+    >
+      <canvas
+        id="world-canvas"
+        tabindex="0"
+        aria-label="A triangulated curved world with a destination beacon"
+      ></canvas>
+      <div class="stage-vignette" aria-hidden="true"></div>
+      <p id="scene-caption" class="scene-caption" aria-live="polite">
+        Click the world once to place the explorer.
+      </p>
+      <div id="loading" class="loading" role="status">
+        <span></span>
+        <p>Assembling the curved world</p>
+      </div>
+      <div id="webgl-fallback" class="webgl-fallback" hidden>
+        <div class="fallback-world" aria-hidden="true"></div>
+        <p>
+          The interactive world needs WebGL. The story and mathematics remain
+          available below.
+        </p>
+      </div>
+    </div>
+
+    <main id="story">
+      <section
+        id="arrival"
+        class="chapter chapter--opening"
+        data-act="0"
+        aria-labelledby="arrival-title"
+      >
+        <div class="chapter-copy">
+          <p class="eyebrow">A question in geometry</p>
+          <h1 id="arrival-title">The Shortest Path Through a Curved World</h1>
+          <p class="subtitle">
+            How heat reveals the shortest route across a complex 3D surface.
+          </p>
+          <p class="lead">
+            You are standing somewhere on a curved world. A beacon is waiting on
+            the other side. What is the shortest path home?
+          </p>
+          <p class="action-cue">
+            <span>One action</span> Click the surface to place the explorer.
+          </p>
+          <a class="scroll-cue" href="#straight-line"
+            >Follow the question <span aria-hidden="true">↓</span></a
+          >
+        </div>
+      </section>
+
+      <section
+        id="straight-line"
+        class="chapter"
+        data-act="1"
+        aria-labelledby="straight-title"
+      >
+        <div class="chapter-copy">
+          <p class="act-label">I · The tempting answer</p>
+          <h2 id="straight-title">A straight line cheats.</h2>
+          <p>
+            In flat space, the shortest path between two points is a straight
+            line. Here that line cuts through the planet. The explorer cannot
+            follow it without leaving the surface.
+          </p>
+          <div class="distance-key" aria-label="Distance comparison">
+            <span><i class="ambient-swatch"></i> Through ambient 3D space</span>
+            <span
+              ><i class="surface-swatch"></i> Constrained to the surface</span
+            >
+          </div>
+          <p class="margin-note">
+            The constraint changes the geometry—and therefore changes
+            “shortest.”
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="triangles"
+        class="chapter"
+        data-act="2"
+        aria-labelledby="triangles-title"
+      >
+        <div class="chapter-copy">
+          <p class="act-label">II · What the computer sees</p>
+          <h2 id="triangles-title">A smooth world, made of triangles.</h2>
+          <p>
+            A computer does not see a perfectly smooth planet. It sees 10,242
+            vertices joined into 20,480 oriented triangular faces. Each triangle
+            is flat; together they approximate the folds, ridges, and valleys of
+            the surface.
+          </p>
+          <p>
+            One quick baseline is to walk only along mesh edges. Dijkstra's
+            algorithm finds the shortest such graph route, but its turns inherit
+            the triangulation. Refine or rotate the mesh and that jagged route
+            changes.
+          </p>
+          <p class="margin-note">
+            An edge route is intrinsic to the graph—not the exact continuous
+            surface.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="release-heat"
+        class="chapter chapter--heat"
+        data-act="3"
+        aria-labelledby="heat-title"
+      >
+        <div class="chapter-copy">
+          <p class="act-label">III · The central experiment</p>
+          <h2 id="heat-title">Release heat.</h2>
+          <p>
+            Imagine the beacon as a warm point on a cold world. Heat reaches
+            nearby places first, then bends around hills and flows through
+            passages because it is constrained to the same surface as the
+            explorer.
+          </p>
+          <p class="revelation">Could the way heat spreads reveal distance?</p>
+          <button id="release-button" class="release-button" type="button">
+            <span class="release-icon" aria-hidden="true"></span>
+            Release Heat
+          </button>
+          <p id="heat-status" class="button-note">
+            Six diffusion states, solved by the C++ engine.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="direction"
+        class="chapter"
+        data-act="4"
+        aria-labelledby="direction-title"
+      >
+        <div class="chapter-copy">
+          <p class="act-label">IV · Heat becomes direction</p>
+          <h2 id="direction-title">Read the slope of warmth.</h2>
+          <p>
+            At every triangle, the heat values form a tiny slope. Its
+            <em>gradient</em> points toward the fastest increase. Reverse and
+            normalize that slope, and the mesh gains a clean unit direction
+            field.
+          </p>
+          <ol class="method-stages">
+            <li>
+              <span>01</span>
+              <div>
+                <strong>Heat diffuses</strong
+                ><small>nearby points respond first</small>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <strong>The gradient reveals direction</strong
+                ><small>magnitude is discarded</small>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <strong>Poisson reconstructs distance</strong
+                ><small>local directions become one global field</small>
+              </div>
+            </li>
+          </ol>
+          <p>
+            Follow the reconstructed distance downhill across triangle faces and
+            a surface-constrained route reaches the beacon. This path is called
+            a <strong>geodesic</strong>.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="mathematics"
+        class="chapter chapter--math"
+        data-act="5"
+        aria-labelledby="math-title"
+      >
+        <div class="chapter-copy chapter-copy--wide">
+          <p class="act-label">V · The mathematics</p>
+          <h2 id="math-title">Three equations, one idea.</h2>
+          <p>
+            The implementation uses a positive-semidefinite cotangent stiffness
+            matrix
+            <span data-math="L \approx -\Delta"></span>. With that sign
+            convention, backward Euler diffusion is stable and the same sparse
+            operators work on every query.
+          </p>
+
+          <div class="equation-step">
+            <span class="equation-number">1</span>
+            <div>
+              <p class="equation" data-math="(M+tL)u=M\delta"></p>
+              <p>
+                <strong>Diffuse briefly.</strong>
+                <span data-math="M"></span> stores vertex area,
+                <span data-math="L"></span> measures surface variation,
+                <span data-math="t=h^2"></span> ties diffusion time to mean edge
+                length, and <span data-math="\delta"></span> places a unit
+                source at the beacon. The solution
+                <span data-math="u"></span> is heat.
+              </p>
+            </div>
+          </div>
+
+          <div class="equation-step">
+            <span class="equation-number">2</span>
+            <div>
+              <p
+                class="equation"
+                data-math="X=-\frac{\nabla u}{\lVert\nabla u\rVert}"
+              ></p>
+              <p>
+                <strong>Keep direction, discard magnitude.</strong> Each face
+                has a constant piecewise-linear gradient.
+                <span data-math="X"></span> points approximately in the
+                direction in which distance increases.
+              </p>
+            </div>
+          </div>
+
+          <div class="equation-step">
+            <span class="equation-number">3</span>
+            <div>
+              <p
+                class="equation"
+                data-math="L\phi=b_X,\qquad (b_X)_i=\sum_f A_f\,\nabla b_i\!\cdot X_f"
+              ></p>
+              <p>
+                <strong>Integrate the directions.</strong> The Poisson solve
+                finds the scalar field <span data-math="\phi"></span> whose
+                gradient best matches <span data-math="X"></span>. Here
+                <span data-math="b_X"></span> is the weak gradient load—the
+                negative integrated continuum divergence for our
+                <span data-math="L\approx-\Delta"></span> convention. Subtract
+                the source value and <span data-math="\phi"></span> becomes
+                distance.
+              </p>
+            </div>
+          </div>
+
+          <figure class="code-figure">
+            <figcaption>
+              From <code>native/src/heat_method.cpp</code>—the code that
+              produced this world
+            </figcaption>
+            <pre><code><span class="code-type">std::vector&lt;Vec3&gt;</span> gradients =
+    faceGradient(mesh_, operators_.faceGeometry, result.heat);
+
+<span class="code-keyword">for</span> (<span class="code-type">std::size_t</span> face = <span class="code-number">0</span>; face &lt; gradients.size(); ++face) {
+  <span class="code-keyword">const</span> <span class="code-type">double</span> norm = gradients[face].norm();
+  <span class="code-keyword">if</span> (!std::isfinite(norm) || norm &lt;= options_.zeroGradientEpsilon) {
+    ++result.zeroGradientFaces;
+    <span class="code-keyword">continue</span>;
+  }
+  result.directionField[face] = -gradients[face] / norm;
+}
+
+<span class="code-type">Vector</span> load = gradientLoad(mesh_, operators_.faceGeometry, result.directionField);
+load[<span class="code-number">0</span>] = <span class="code-number">0.0</span>;
+result.poissonReport =
+    solveSystem(poissonMatrix_, poissonDirect_, load, result.distance);</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section
+        id="scale"
+        class="chapter chapter--scale"
+        data-act="6"
+        aria-labelledby="scale-title"
+      >
+        <div class="chapter-copy chapter-copy--wide">
+          <p class="act-label">VI · Computation at scale</p>
+          <h2 id="scale-title">Geometry becomes sparse algebra.</h2>
+          <p>
+            On a dense mesh, most vertices interact only with their one-ring
+            neighbors. That locality creates sparse matrices: millions of
+            possible entries, but only a small band of real work. Operator
+            assembly and factorization are preprocessing; each new source reuses
+            them.
+          </p>
+          <div
+            id="benchmark-chart"
+            class="benchmark-chart"
+            role="img"
+            aria-label="Measured CPU scaling benchmark"
+          ></div>
+          <div class="timing-legend">
+            <span><i class="preprocess-swatch"></i> Preprocess once</span>
+            <span><i class="query-swatch"></i> Heat Method query</span>
+            <span><i class="dijkstra-swatch"></i> Edge Dijkstra query</span>
+          </div>
+          <p id="benchmark-caption" class="margin-note">
+            Loading measured benchmark data…
+          </p>
+          <div class="gpu-status" aria-label="GPU benchmark status">
+            <span>CUDA / cuSPARSE</span>
+            <strong>Implemented · measurement unavailable here</strong>
+            <p>
+              No NVIDIA device or CUDA toolchain was present on this validation
+              host, so no GPU timing is claimed.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="answer"
+        class="chapter chapter--answer"
+        data-act="7"
+        aria-labelledby="answer-title"
+      >
+        <div class="chapter-copy">
+          <p class="act-label">The answer</p>
+          <h2 id="answer-title">Heat can reveal distance.</h2>
+          <p>
+            Let heat move for an instant. Read the direction in which it
+            changes. Reconstruct the distance field that agrees with those
+            directions. Then follow that field home.
+          </p>
+          <button id="replay-button" class="replay-button" type="button">
+            Replay the journey <span aria-hidden="true">↺</span>
+          </button>
+        </div>
+      </section>
+
+      <section
+        id="under-the-hood"
+        class="under-hood"
+        aria-labelledby="under-title"
+      >
+        <div class="under-intro">
+          <p class="eyebrow">For the technically curious</p>
+          <h2 id="under-title">Under the hood</h2>
+          <p>
+            The story above is backed by a C++20 geometry engine, not a radial
+            shader. This section separates what is exact, what is approximate,
+            and what was actually measured.
+          </p>
+        </div>
+
+        <div class="technical-grid">
+          <article>
+            <span>01</span>
+            <h3>Mesh representation</h3>
+            <p>
+              An oriented halfedge structure stores vertices, faces, edges,
+              twins, next links, vertex incidence, cached one-rings, and
+              boundary state. Construction rejects non-manifold orientation and
+              can explicitly reject or skip degenerate triangles.
+            </p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Discrete operators</h3>
+            <p>
+              Barycentric vertex areas form a lumped mass matrix. Per-triangle
+              cotangents assemble a symmetric stiffness matrix; face barycentric
+              gradients provide scalar gradient and weak divergence loads.
+              Closed and boundary meshes use natural Neumann conditions.
+            </p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Numerical design</h3>
+            <p>
+              Eigen's SimplicialLDLT supplies the reference direct path;
+              preconditioned conjugate gradient supplies an iterative path. Both
+              report true relative residuals. Heat and pinned Poisson
+              factorizations are reused between source queries.
+            </p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Path extraction</h3>
+            <p>
+              The route follows the piecewise-linear distance gradient within a
+              face, computes the next barycentric edge crossing, transfers to
+              the adjacent face, and stops inside a source neighborhood. Cycle,
+              critical-point, boundary, and maximum-step guards provide a
+              monotone vertex fallback.
+            </p>
+          </article>
+          <article>
+            <span>05</span>
+            <h3>CUDA architecture</h3>
+            <p>
+              The optional backend keeps CSR matrices and work vectors resident,
+              uses cuSPARSE for sparse matrix-vector products, cuBLAS
+              reductions, a Jacobi-preconditioned conjugate gradient loop, and
+              custom geometry, update, and normalization kernels. Double
+              precision is deliberate for CPU agreement.
+            </p>
+          </article>
+          <article>
+            <span>06</span>
+            <h3>Correctness</h3>
+            <p>
+              Tests cover topology, boundary traversal, areas and normals,
+              Laplacian symmetry and row sums, positive mass, constant
+              gradients, solve residuals, deterministic exports, path
+              termination, a flat domain, great-circle distance, solver
+              agreement, and malformed input.
+            </p>
+          </article>
+        </div>
+
+        <div class="implementation-notes">
+          <div>
+            <p class="eyebrow">Measured primary solve</p>
+            <dl id="residual-list">
+              <div>
+                <dt>Mesh</dt>
+                <dd>10,242 vertices / 20,480 faces</dd>
+              </div>
+              <div>
+                <dt>Heat residual</dt>
+                <dd>2.83 × 10<sup>−16</sup></dd>
+              </div>
+              <div>
+                <dt>Poisson residual</dt>
+                <dd>3.53 × 10<sup>−13</sup></dd>
+              </div>
+              <div>
+                <dt>Encoding</dt>
+                <dd>963 KB binary, log-quantized heat frames</dd>
+              </div>
+            </dl>
+          </div>
+          <div>
+            <p class="eyebrow">Limitations</p>
+            <p>
+              The Heat Method approximates geodesic distance and converges under
+              refinement; it is not an exact polyhedral-geodesic algorithm.
+              Cotangent quality depends on triangle shape. Extracted paths
+              inherit errors in the scalar field and may need a guarded fallback
+              near critical points. The edge-Dijkstra baseline is graph
+              distance, not a continuous geodesic. CUDA code is compile-covered
+              in CI but was not runtime-measured on this Mac.
+            </p>
+          </div>
+        </div>
+
+        <figure class="code-figure code-figure--light">
+          <figcaption>
+            CUDA PCG update kernel—actual implementation, not pseudocode
+          </figcaption>
+          <pre><code><span class="code-keyword">__global__ void</span> updateSolutionResidualKernel(
+    <span class="code-type">double</span>* solution, <span class="code-type">double</span>* residual,
+    <span class="code-keyword">const</span> <span class="code-type">double</span>* direction,
+    <span class="code-keyword">const</span> <span class="code-type">double</span>* matrixDirection,
+    <span class="code-type">double</span> alpha, <span class="code-type">int</span> count) {
+  <span class="code-keyword">const</span> <span class="code-type">int</span> i = blockIdx.x * blockDim.x + threadIdx.x;
+  <span class="code-keyword">if</span> (i &lt; count) {
+    solution[i] += alpha * direction[i];
+    residual[i] -= alpha * matrixDirection[i];
+  }
+}</code></pre>
+        </figure>
+
+        <div class="references">
+          <h3>Primary references</h3>
+          <ol>
+            <li>
+              Keenan Crane, Clarisse Weischedel, and Max Wardetzky.
+              <a
+                href="https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf"
+                >“Geodesics in Heat: A New Approach to Computing Distance Based
+                on Heat Flow.”</a
+              >
+              ACM Transactions on Graphics 32(5), 2013.
+            </li>
+            <li>
+              Keenan Crane.
+              <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/"
+                >Discrete Differential Geometry course materials.</a
+              >
+              Carnegie Mellon University.
+            </li>
+            <li>
+              <a
+                href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
+                >Source, tests, benchmark methodology, and interview guide.</a
+              >
+            </li>
+          </ol>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Designed and implemented by
+        <a href="https://mihirrao-10.github.io/">Mihir Rao</a>.
+      </p>
+      <a href="#arrival">Back to the world ↑</a>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

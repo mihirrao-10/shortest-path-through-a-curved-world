@@ -1,0 +1,27 @@
+{
+  "schema": "geodesic-world-v1",
+  "title": "The Shortest Path Through a Curved World",
+  "deterministicSeed": 1592594996,
+  "subdivisions": 5,
+  "vertices": 10242,
+  "faces": 20480,
+  "sourceVertex": 7959,
+  "meanEdgeLength": 0.0392187763696,
+  "heatMethodTimeStep": 0.00153811241993,
+  "laplacianSign": "positive-semidefinite stiffness matrix approximating -Delta",
+  "boundaryCondition": "natural Neumann; primary world is closed",
+  "heatEncoding": "per-frame log(u), linearly quantized to uint16",
+  "heatResidual": 2.8314836498e-16,
+  "poissonResidual": 3.53014059417e-13,
+  "zeroGradientFaces": 0,
+  "preprocessingMilliseconds": 41.554458,
+  "heatSolveMilliseconds": 0.506792,
+  "poissonSolveMilliseconds": 0.686042,
+  "dijkstraMilliseconds": 0.891125,
+  "cpu": "Apple Clang/Eigen reference run on the local build host",
+  "gpu": {
+    "available": false,
+    "reason": "No NVIDIA CUDA device or toolchain was available on the local validation host."
+  },
+  "reference": "Crane, Weischedel, Wardetzky, Geodesics in Heat, ACM TOG 2013"
+}

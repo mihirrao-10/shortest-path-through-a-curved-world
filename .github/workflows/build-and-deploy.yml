@@ -1,0 +1,101 @@
+name: Build, test, and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libeigen3-dev clang-format
+
+      - name: Check native formatting
+        run: find native -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cu' \) -print0 | xargs -0 clang-format --dry-run --Werror
+
+      - name: Configure the CPU build
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEODESIC_ENABLE_CUDA=OFF
+
+      - name: Build the native tools
+        run: cmake --build build --parallel 2
+
+      - name: Run native tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Format, lint, unit-test, and build the website
+        working-directory: web
+        run: npm run check
+
+      - name: Install the Playwright browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run responsive end-to-end tests
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Validate built links
+        run: node scripts/validate-links.mjs web/dist
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  cuda-compile:
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.3-devel-ubuntu22.04
+    steps:
+      - name: Install build dependencies
+        run: apt-get update && apt-get install -y cmake ninja-build git ca-certificates libeigen3-dev
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure CUDA
+        run: cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEODESIC_ENABLE_CUDA=ON
+
+      - name: Compile CPU and CUDA targets
+        run: cmake --build build-cuda --parallel 2
+
+      - name: Run CUDA-linked tests (device checks skip without a GPU)
+        run: ctest --test-dir build-cuda --output-on-failure
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: [cpu-web, cuda-compile]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
