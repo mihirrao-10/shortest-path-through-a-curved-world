@@ -3,10 +3,6 @@
 #include "geodesic/path.hpp"
 #include "geodesic/procedural.hpp"
 
-#ifdef GEODESIC_HAS_CUDA
-#include "geodesic/cuda_solver.hpp"
-#endif
-
 #include <Eigen/Core>
 
 #include <algorithm>
@@ -16,6 +12,7 @@
 #include <functional>
 #include <iostream>
 #include <numbers>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -186,6 +183,105 @@ void testDijkstraBaseline() {
   CHECK(result.distance[63] >= std::sqrt(98.0));
 }
 
+geodesic::SurfacePoint surfacePointAtVertex(const geodesic::TriangleMesh& mesh,
+                                            geodesic::Index vertex) {
+  const std::vector<geodesic::Index> faces = mesh.incidentFaces(vertex);
+  CHECK(!faces.empty());
+  const geodesic::Triangle& triangle = mesh.faces()[faces.front()].vertices;
+  std::array<double, 3> barycentric{0.0, 0.0, 0.0};
+  for (std::size_t local = 0; local < triangle.size(); ++local) {
+    if (triangle[local] == vertex) {
+      barycentric[local] = 1.0;
+    }
+  }
+  return geodesic::SurfacePoint{faces.front(), barycentric};
+}
+
+void testGenusOneCurvedWorld() {
+  const geodesic::TriangleMesh first = geodesic::makeCurvedWorld(geodesic::CurvedWorldOptions{4});
+  const geodesic::TriangleMesh second = geodesic::makeCurvedWorld(geodesic::CurvedWorldOptions{4});
+  CHECK(first.vertices().size() == 2560U);
+  CHECK(first.faces().size() == 5120U);
+  CHECK(first.vertices().size() == second.vertices().size());
+  CHECK(first.faces().size() == second.faces().size());
+  CHECK((first.vertices()[713].position - second.vertices()[713].position).norm() < 1e-15);
+
+  std::string reason;
+  CHECK(first.validateManifold(&reason));
+  CHECK(!first.hasBoundary());
+  const long long eulerCharacteristic = static_cast<long long>(first.vertices().size()) -
+                                        static_cast<long long>(first.edges().size()) +
+                                        static_cast<long long>(first.faces().size());
+  CHECK(eulerCharacteristic == 0);
+  double maximumAspect = 0.0;
+  for (geodesic::Index face = 0; face < first.faces().size(); ++face) {
+    CHECK(first.faceArea(face) > 1e-12);
+    CHECK(first.faceNormal(face).allFinite());
+    const geodesic::Triangle& triangle = first.faces()[face].vertices;
+    const geodesic::Vec3& a = first.vertices()[triangle[0]].position;
+    const geodesic::Vec3& b = first.vertices()[triangle[1]].position;
+    const geodesic::Vec3& c = first.vertices()[triangle[2]].position;
+    const double longestSquared =
+        std::max({(a - b).squaredNorm(), (b - c).squaredNorm(), (c - a).squaredNorm()});
+    maximumAspect = std::max(maximumAspect, longestSquared / (2.0 * first.faceArea(face)));
+  }
+  CHECK(maximumAspect < 3.25);
+  double minimumRadialDistance = std::numeric_limits<double>::infinity();
+  for (geodesic::Index vertex = 0; vertex < first.vertices().size(); ++vertex) {
+    CHECK(first.vertexNormal(vertex).allFinite());
+    const geodesic::Vec3& position = first.vertices()[vertex].position;
+    minimumRadialDistance = std::min(minimumRadialDistance, std::hypot(position.x(), position.y()));
+  }
+  CHECK(minimumRadialDistance > 0.5);
+
+  const geodesic::CurvedWorldLandmarks landmarks = geodesic::selectCurvedWorldLandmarks(first);
+  const std::array<geodesic::Index, 4> landmarkVertices{landmarks.source, landmarks.exterior,
+                                                        landmarks.tunnel, landmarks.farSide};
+  for (const geodesic::Index vertex : landmarkVertices) {
+    CHECK(vertex < first.vertices().size());
+  }
+  CHECK(std::set<geodesic::Index>(landmarkVertices.begin(), landmarkVertices.end()).size() ==
+        landmarkVertices.size());
+  const auto radialDistance = [&first](geodesic::Index vertex) {
+    const geodesic::Vec3& position = first.vertices()[vertex].position;
+    return std::hypot(position.x(), position.y());
+  };
+  CHECK(radialDistance(landmarks.tunnel) < radialDistance(landmarks.exterior));
+  const auto radialNormalAlignment = [&first](geodesic::Index vertex) {
+    const geodesic::Vec3& position = first.vertices()[vertex].position;
+    const geodesic::Vec3 radial(position.x(), position.y(), 0.0);
+    return first.vertexNormal(vertex).dot(radial.normalized());
+  };
+  CHECK(radialNormalAlignment(landmarks.exterior) > 0.8);
+  CHECK(radialNormalAlignment(landmarks.tunnel) < -0.8);
+
+  geodesic::HeatMethodSolver solver(first);
+  const geodesic::HeatMethodResult heat = solver.compute(landmarks.source);
+  CHECK(heat.heatReport.converged);
+  CHECK(heat.poissonReport.converged);
+  CHECK(heat.heatReport.relativeResidual < 1e-9);
+  CHECK(heat.poissonReport.relativeResidual < 1e-9);
+
+  const geodesic::DijkstraResult dijkstra = geodesic::edgeDijkstra(first, landmarks.source);
+  for (const geodesic::Index target : {landmarks.exterior, landmarks.tunnel, landmarks.farSide}) {
+    const std::vector<geodesic::Index> path =
+        geodesic::reconstructVertexPath(dijkstra, target, landmarks.source);
+    CHECK(!path.empty());
+    CHECK(path.front() == target);
+    CHECK(path.back() == landmarks.source);
+    CHECK(path.size() <= first.vertices().size());
+  }
+
+  for (const geodesic::Index target : {landmarks.exterior, landmarks.tunnel}) {
+    const geodesic::PathResult path =
+        geodesic::traceDistanceGradient(first, solver.operators().faceGeometry, heat.distance,
+                                        landmarks.source, surfacePointAtVertex(first, target));
+    CHECK(path.reachedSource);
+    CHECK(path.points.size() >= 2U);
+    CHECK((path.points.back() - first.vertices()[landmarks.source].position).norm() < 1e-12);
+  }
+}
+
 void testMalformedAndDegenerateMeshes() {
   const std::vector<geodesic::Vec3> positions{{0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {0, 1, 0}};
   bool rejected = false;
@@ -211,29 +307,6 @@ void testMalformedAndDegenerateMeshes() {
   CHECK(rejected);
 }
 
-#ifdef GEODESIC_HAS_CUDA
-void testCudaAgreementWhenDeviceAvailable() {
-  if (!geodesic::cudaDeviceAvailable()) {
-    std::cout << "[SKIP] CUDA agreement (no device)\n";
-    return;
-  }
-  const geodesic::TriangleMesh mesh = geodesic::makeIcosphere(2);
-  const geodesic::DiscreteOperators operators = geodesic::assembleOperators(mesh);
-  geodesic::SparseMatrix heatMatrix = operators.suggestedTimeStep * operators.laplacian;
-  for (int i = 0; i < operators.lumpedMass.size(); ++i) {
-    heatMatrix.coeffRef(i, i) += operators.lumpedMass[i];
-  }
-  geodesic::Vector rhs = geodesic::Vector::Zero(heatMatrix.rows());
-  rhs[0] = 1.0;
-  geodesic::CudaPcgSolver gpu(heatMatrix);
-  const geodesic::CudaSolveResult gpuResult = gpu.solve(rhs);
-  Eigen::SimplicialLDLT<geodesic::SparseMatrix> cpu(heatMatrix);
-  const geodesic::Vector cpuResult = cpu.solve(rhs);
-  CHECK(gpuResult.report.converged);
-  CHECK((gpuResult.solution - cpuResult).norm() / cpuResult.norm() < 1e-7);
-}
-#endif
-
 } // namespace
 
 int main() {
@@ -247,10 +320,8 @@ int main() {
       {"sphere great-circle approximation", testSphereGreatCircleDistance},
       {"direct versus iterative", testDirectIterativeAgreement},
       {"Dijkstra baseline", testDijkstraBaseline},
+      {"genus-one curved world", testGenusOneCurvedWorld},
       {"malformed and degenerate meshes", testMalformedAndDegenerateMeshes},
-#ifdef GEODESIC_HAS_CUDA
-      {"CPU versus CUDA", testCudaAgreementWhenDeviceAvailable},
-#endif
   };
 
   std::size_t passed = 0;

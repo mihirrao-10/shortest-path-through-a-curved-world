@@ -2,10 +2,17 @@ export interface WorldMetadata {
   schema: string;
   title: string;
   deterministicSeed: number;
-  subdivisions: number;
+  detailLevel: number;
   vertices: number;
   faces: number;
   sourceVertex: number;
+  topology: {
+    closed: boolean;
+    orientedManifold: boolean;
+    eulerCharacteristic: number;
+    genus: number;
+  };
+  targetPresets: Record<TargetPresetName, TargetPresetMetadata>;
   meanEdgeLength: number;
   heatMethodTimeStep: number;
   laplacianSign: string;
@@ -14,13 +21,29 @@ export interface WorldMetadata {
   heatResidual: number;
   poissonResidual: number;
   zeroGradientFaces: number;
+  operatorAssemblyMilliseconds: number;
+  factorizationMilliseconds: number;
   preprocessingMilliseconds: number;
   heatSolveMilliseconds: number;
   poissonSolveMilliseconds: number;
   dijkstraMilliseconds: number;
-  cpu: string;
-  gpu: { available: boolean; reason: string };
+  engine: string;
   reference: string;
+}
+
+export type TargetPresetName = "exterior" | "tunnel" | "farSide";
+
+export interface TargetPresetMetadata {
+  vertex: number;
+  chordLength: number;
+  heatRouteLength: number;
+  edgeRouteLength: number;
+}
+
+export interface TargetPresetRoute extends TargetPresetMetadata {
+  name: TargetPresetName;
+  heatPoints: Float32Array;
+  edgeVertices: Uint32Array;
 }
 
 export interface GradientSample {
@@ -35,6 +58,7 @@ export interface WorldData {
   faceCount: number;
   heatFrameCount: number;
   sourceVertex: number;
+  targetPresets: Record<TargetPresetName, TargetPresetRoute>;
   meanEdgeLength: number;
   timeStep: number;
   frameTimes: Float64Array;
@@ -52,7 +76,8 @@ export interface WorldData {
   vertexNeighbors: number[][];
 }
 
-const MAGIC = "GEOWRLD1";
+const MAGIC = "GEOWRLD2";
+const TARGET_PRESET_NAMES = ["exterior", "tunnel", "farSide"] as const;
 
 function copyTypedArray<
   T extends Float32Array | Uint32Array | Int32Array | Uint16Array,
@@ -109,17 +134,21 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
   const heatFrameCount = readUint32();
   const gradientSampleCount = readUint32();
   const sourceVertex = readUint32();
-  readUint32(); // Reserved.
+  const targetPresetCount = readUint32();
   if (
-    version !== 1 ||
+    version !== 2 ||
     vertexCount === 0 ||
     faceCount === 0 ||
-    heatFrameCount === 0
+    heatFrameCount === 0 ||
+    targetPresetCount !== TARGET_PRESET_NAMES.length
   ) {
     throw new Error("World binary header is invalid or unsupported");
   }
   const meanEdgeLength = readFloat64();
   const timeStep = readFloat64();
+  const targetPresetVertices = new Uint32Array(targetPresetCount);
+  for (let preset = 0; preset < targetPresetCount; preset += 1)
+    targetPresetVertices[preset] = readUint32();
   const frameTimes = new Float64Array(heatFrameCount);
   const frameLogMin = new Float64Array(heatFrameCount);
   const frameLogMax = new Float64Array(heatFrameCount);
@@ -212,6 +241,51 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     offset += 12;
     gradientSamples.push({ face, position, direction });
   }
+
+  const targetPresets = {} as Record<TargetPresetName, TargetPresetRoute>;
+  for (let preset = 0; preset < targetPresetCount; preset += 1) {
+    const kind = readUint32();
+    const targetVertex = readUint32();
+    const heatPointCount = readUint32();
+    const edgeVertexCount = readUint32();
+    const chordLength = readFloat64();
+    const heatRouteLength = readFloat64();
+    const edgeRouteLength = readFloat64();
+    const name = TARGET_PRESET_NAMES[kind];
+    if (
+      name === undefined ||
+      kind !== preset ||
+      targetVertex !== targetPresetVertices[preset] ||
+      targetVertex >= vertexCount ||
+      heatPointCount < 2 ||
+      edgeVertexCount < 2
+    ) {
+      throw new Error("World target preset record is invalid");
+    }
+    const heatPointsResult = copyTypedArray(
+      buffer,
+      offset,
+      heatPointCount * 3,
+      Float32Array,
+    );
+    offset = heatPointsResult.nextOffset;
+    const edgeVerticesResult = copyTypedArray(
+      buffer,
+      offset,
+      edgeVertexCount,
+      Uint32Array,
+    );
+    offset = edgeVerticesResult.nextOffset;
+    targetPresets[name] = {
+      name,
+      vertex: targetVertex,
+      chordLength,
+      heatRouteLength,
+      edgeRouteLength,
+      heatPoints: heatPointsResult.values,
+      edgeVertices: edgeVerticesResult.values,
+    };
+  }
   if (offset !== buffer.byteLength) {
     throw new Error(
       `World binary length mismatch: parsed ${offset}, received ${buffer.byteLength}`,
@@ -240,6 +314,7 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     faceCount,
     heatFrameCount,
     sourceVertex,
+    targetPresets,
     meanEdgeLength,
     timeStep,
     frameTimes,
@@ -278,10 +353,16 @@ export async function loadWorldData(): Promise<{
   ]);
   const data = parseWorldBinary(buffer);
   if (
-    metadata.schema !== "geodesic-world-v1" ||
+    metadata.schema !== "geodesic-world-v2" ||
     metadata.vertices !== data.vertexCount ||
     metadata.faces !== data.faceCount ||
-    metadata.sourceVertex !== data.sourceVertex
+    metadata.sourceVertex !== data.sourceVertex ||
+    metadata.topology.genus !== 1 ||
+    metadata.topology.eulerCharacteristic !== 0 ||
+    TARGET_PRESET_NAMES.some(
+      (name) =>
+        metadata.targetPresets[name].vertex !== data.targetPresets[name].vertex,
+    )
   ) {
     throw new Error("World metadata does not match the binary payload");
   }

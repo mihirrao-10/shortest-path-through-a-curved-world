@@ -27,9 +27,8 @@ await desktop.page.screenshot({
   path: "../docs/screenshots/opening-desktop.png",
 });
 
-const canvas = desktop.page.locator("#world-canvas");
-await canvas.click({ position: { x: 520, y: 420 } });
-await desktop.page.locator("#straight-line").scrollIntoViewIfNeeded();
+await desktop.page.locator('button[data-target-preset="tunnel"]').click();
+await desktop.page.locator("#ambient-failure").scrollIntoViewIfNeeded();
 await desktop.page.waitForTimeout(700);
 await desktop.page.screenshot({
   path: "../docs/screenshots/straight-line-desktop.png",
@@ -40,7 +39,7 @@ await desktop.page.locator("#release-button").click();
 await desktop.page.waitForTimeout(2700);
 await desktop.page.screenshot({ path: "../docs/screenshots/heat-desktop.png" });
 
-await desktop.page.locator("#direction").scrollIntoViewIfNeeded();
+await desktop.page.locator("#direction-field").scrollIntoViewIfNeeded();
 await desktop.page.waitForTimeout(900);
 await desktop.page.screenshot({
   path: "../docs/screenshots/direction-desktop.png",
@@ -68,7 +67,7 @@ await mobile.page.waitForTimeout(700);
 await mobile.page.screenshot({
   path: "../docs/screenshots/opening-mobile.png",
 });
-await mobile.page.locator("#mathematics").scrollIntoViewIfNeeded();
+await mobile.page.locator("#explore-map").scrollIntoViewIfNeeded();
 await mobile.page.waitForTimeout(900);
 await mobile.page.screenshot({ path: "../docs/screenshots/math-mobile.png" });
 const mobileMetrics = await mobile.page.evaluate(() => ({
@@ -79,8 +78,8 @@ const mobileMetrics = await mobile.page.evaluate(() => ({
     .querySelector("#world-stage")
     ?.getBoundingClientRect()
     .toJSON(),
-  math: document
-    .querySelector("#mathematics .chapter-copy")
+  map: document
+    .querySelector("#explore-map .chapter-copy")
     ?.getBoundingClientRect()
     .toJSON(),
 }));

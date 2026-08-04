@@ -27,13 +27,12 @@ int intArgument(int argc, char** argv, std::string_view name, int fallback) {
 
 void usage() {
   std::cout
-      << "GPU-Accelerated Geodesic Solver on Triangle Meshes\n\n"
+      << "High-Performance C++ Geodesic Solver on Triangle Meshes\n\n"
       << "Commands:\n"
-      << "  generate   [--subdivisions 5] --output mesh.obj\n"
+      << "  generate   [--detail 5] --output mesh.obj\n"
       << "  solve      --mesh mesh.obj [--source 0] [--method heat|dijkstra] --output values.csv\n"
       << "  path       --mesh mesh.obj [--source 0] [--start 1] --output path.obj\n"
-      << "  export-web [--subdivisions 5] --output web/public/data\n"
-      << "  validate-gpu\n";
+      << "  export-web [--detail 5] --output web/public/data\n";
 }
 
 } // namespace
@@ -47,10 +46,10 @@ int main(int argc, char** argv) {
     }
     const std::string command = argv[1];
     if (command == "generate") {
-      const int subdivisions = intArgument(argc, argv, "--subdivisions", 5);
+      const int detailLevel = intArgument(argc, argv, "--detail", 5);
       const std::filesystem::path output =
           argumentValue(argc, argv, "--output", "curved-world.obj");
-      TriangleMesh mesh = makeCurvedWorld(PlanetOptions{subdivisions});
+      TriangleMesh mesh = makeCurvedWorld(CurvedWorldOptions{detailLevel});
       writeObj(mesh, output);
       std::cout << "wrote " << mesh.vertices().size() << " vertices and " << mesh.faces().size()
                 << " faces to " << output << '\n';
@@ -112,7 +111,7 @@ int main(int argc, char** argv) {
                 << path.termination << ")\n";
     } else if (command == "export-web") {
       WebExportOptions options;
-      options.subdivisions = intArgument(argc, argv, "--subdivisions", 5);
+      options.detailLevel = intArgument(argc, argv, "--detail", 5);
       const std::filesystem::path output = argumentValue(argc, argv, "--output", "web/public/data");
       const WebExportReport report = exportCurvedWorld(output, options);
       std::cout << "exported " << report.vertexCount << " vertices, " << report.faceCount
@@ -121,14 +120,6 @@ int main(int argc, char** argv) {
                 << " poisson residual=" << report.poissonResidual << '\n'
                 << report.binaryPath << '\n'
                 << report.metadataPath << '\n';
-    } else if (command == "validate-gpu") {
-#ifdef GEODESIC_HAS_CUDA
-      std::cout << "CUDA backend is compiled; use geodesic_benchmark --gpu for agreement checks.\n";
-      return EXIT_SUCCESS;
-#else
-      std::cout << "CUDA backend is unavailable in this CPU-only build.\n";
-      return 2;
-#endif
     } else {
       usage();
       return EXIT_FAILURE;

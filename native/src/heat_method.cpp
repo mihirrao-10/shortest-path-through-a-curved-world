@@ -35,15 +35,19 @@ HeatMethodSolver::HeatMethodSolver(const TriangleMesh& mesh, HeatMethodOptions o
     throw std::invalid_argument("invalid Heat Method solver options");
   }
 
-  const auto start = Clock::now();
+  const auto assemblyStart = Clock::now();
   operators_ = assembleOperators(mesh, options.timeScale);
+  operatorAssemblyMilliseconds_ = elapsedMilliseconds(assemblyStart);
+
+  const auto factorizationStart = Clock::now();
   heatMatrix_ =
       makeHeatMatrix(operators_.laplacian, operators_.lumpedMass, operators_.suggestedTimeStep);
   poissonMatrix_ = pinnedPoissonMatrix();
   heatDirect_.compute(heatMatrix_);
   poissonDirect_.compute(poissonMatrix_);
   ready_ = heatDirect_.info() == Eigen::Success && poissonDirect_.info() == Eigen::Success;
-  preprocessingMilliseconds_ = elapsedMilliseconds(start);
+  factorizationMilliseconds_ = elapsedMilliseconds(factorizationStart);
+  preprocessingMilliseconds_ = operatorAssemblyMilliseconds_ + factorizationMilliseconds_;
   if (!ready_) {
     throw std::runtime_error("sparse factorization failed during Heat Method preprocessing");
   }

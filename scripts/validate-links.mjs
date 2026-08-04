@@ -18,9 +18,19 @@ const failures = [];
 const base = "/shortest-path-through-a-curved-world/";
 for (const file of files.filter((path) => extname(path) === ".html")) {
   const html = readFileSync(file, "utf8");
+  const ids = new Set(
+    [...html.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]),
+  );
   const attributes = [...html.matchAll(/\b(?:href|src)=["']([^"']+)["']/g)].map((match) => match[1]);
   for (const value of attributes) {
-    if (!value || value.startsWith("#") || value.startsWith("mailto:")) continue;
+    if (!value || value.startsWith("mailto:")) continue;
+    if (value.startsWith("#")) {
+      const id = decodeURIComponent(value.slice(1));
+      if (id && !ids.has(id)) {
+        failures.push(`${relative(root, file)}: missing internal target ${value}`);
+      }
+      continue;
+    }
     if (/^https?:\/\//.test(value)) {
       try {
         const url = new URL(value);

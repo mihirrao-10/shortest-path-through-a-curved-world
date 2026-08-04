@@ -1,5 +1,6 @@
 dist/
 node_modules/
 public/data/*.bin
+public/data/*.json
 playwright-report/
 test-results/
