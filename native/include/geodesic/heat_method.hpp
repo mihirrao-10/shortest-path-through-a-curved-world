@@ -42,6 +42,12 @@ public:
   [[nodiscard]] double preprocessingMilliseconds() const noexcept {
     return preprocessingMilliseconds_;
   }
+  [[nodiscard]] double operatorAssemblyMilliseconds() const noexcept {
+    return operatorAssemblyMilliseconds_;
+  }
+  [[nodiscard]] double factorizationMilliseconds() const noexcept {
+    return factorizationMilliseconds_;
+  }
   [[nodiscard]] bool ready() const noexcept {
     return ready_;
   }
@@ -62,6 +68,8 @@ private:
   SparseMatrix poissonMatrix_;
   Eigen::SimplicialLDLT<SparseMatrix> heatDirect_;
   Eigen::SimplicialLDLT<SparseMatrix> poissonDirect_;
+  double operatorAssemblyMilliseconds_{0.0};
+  double factorizationMilliseconds_{0.0};
   double preprocessingMilliseconds_{0.0};
   bool ready_{false};
 };

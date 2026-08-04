@@ -5,7 +5,6 @@ project(shortest_path_through_a_curved_world
   DESCRIPTION "Heat-method geodesic distances on triangle meshes"
   LANGUAGES CXX)
 
-option(GEODESIC_ENABLE_CUDA "Build the optional CUDA PCG backend" OFF)
 option(GEODESIC_BUILD_TESTS "Build native correctness tests" ON)
 option(GEODESIC_BUILD_BENCHMARKS "Build native benchmarks" ON)
 
@@ -50,39 +49,16 @@ endif()
 add_executable(geodesic_cli native/src/cli.cpp)
 target_link_libraries(geodesic_cli PRIVATE geodesic_core)
 
-if(GEODESIC_ENABLE_CUDA)
-  include(CheckLanguage)
-  check_language(CUDA)
-  if(NOT CMAKE_CUDA_COMPILER)
-    message(FATAL_ERROR "GEODESIC_ENABLE_CUDA=ON, but no CUDA compiler was found")
-  endif()
-  enable_language(CUDA)
-  find_package(CUDAToolkit REQUIRED)
-
-  add_library(geodesic_cuda
-    native/cuda/cuda_solver.cu
-    native/cuda/geometry_kernels.cu)
-  target_include_directories(geodesic_cuda PUBLIC native/include)
-  target_link_libraries(geodesic_cuda PUBLIC geodesic_core CUDA::cudart CUDA::cusparse CUDA::cublas)
-  target_compile_definitions(geodesic_cuda PUBLIC GEODESIC_HAS_CUDA=1)
-  set_target_properties(geodesic_cuda PROPERTIES
-    CUDA_STANDARD 17
-    CUDA_STANDARD_REQUIRED ON
-    CUDA_ARCHITECTURES "70;75;80;86;89;90"
-    POSITION_INDEPENDENT_CODE ON)
-  target_link_libraries(geodesic_cli PRIVATE geodesic_cuda)
-  target_compile_definitions(geodesic_cli PRIVATE GEODESIC_HAS_CUDA=1)
-endif()
-
 if(GEODESIC_BUILD_TESTS)
   enable_testing()
   add_executable(geodesic_tests native/tests/test_main.cpp)
   target_link_libraries(geodesic_tests PRIVATE geodesic_core)
-  if(GEODESIC_ENABLE_CUDA)
-    target_link_libraries(geodesic_tests PRIVATE geodesic_cuda)
-    target_compile_definitions(geodesic_tests PRIVATE GEODESIC_HAS_CUDA=1)
-  endif()
   add_test(NAME geodesic_tests COMMAND geodesic_tests)
+  add_test(
+    NAME focused_cpu_source_guard
+    COMMAND ${CMAKE_COMMAND}
+      -DGEODESIC_SOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-focused-cpu.cmake)
 endif()
 
 if(GEODESIC_BUILD_BENCHMARKS)
@@ -90,10 +66,6 @@ if(GEODESIC_BUILD_BENCHMARKS)
   target_link_libraries(geodesic_benchmark PRIVATE geodesic_core)
   target_compile_definitions(geodesic_benchmark PRIVATE
     GEODESIC_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
-  if(GEODESIC_ENABLE_CUDA)
-    target_link_libraries(geodesic_benchmark PRIVATE geodesic_cuda)
-    target_compile_definitions(geodesic_benchmark PRIVATE GEODESIC_HAS_CUDA=1)
-  endif()
 endif()
 
 install(TARGETS geodesic_cli RUNTIME DESTINATION bin)

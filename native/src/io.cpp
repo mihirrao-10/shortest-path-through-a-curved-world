@@ -56,25 +56,66 @@ void requireStream(const std::ios& stream, const std::filesystem::path& path) {
   }
 }
 
-Index chooseBeacon(const TriangleMesh& mesh) {
-  const Vec3 target = Vec3(0.68, -0.34, -0.65).normalized();
-  Index best = 0;
-  double bestDot = -std::numeric_limits<double>::infinity();
-  for (Index vertex = 0; vertex < mesh.vertices().size(); ++vertex) {
-    const double score = mesh.vertices()[vertex].position.normalized().dot(target);
-    if (score > bestDot) {
-      bestDot = score;
-      best = vertex;
-    }
-  }
-  return best;
-}
-
 struct GradientSample {
   Index face{kInvalidIndex};
   Vec3 position{Vec3::Zero()};
   Vec3 direction{Vec3::Zero()};
 };
+
+struct PresetRoute {
+  Index target{kInvalidIndex};
+  std::vector<Vec3> heatPoints;
+  std::vector<Index> edgeVertices;
+  double chordLength{0.0};
+  double heatLength{0.0};
+  double edgeLength{0.0};
+};
+
+SurfacePoint vertexSurfacePoint(const TriangleMesh& mesh, Index vertex) {
+  const std::vector<Index> faces = mesh.incidentFaces(vertex);
+  if (faces.empty()) {
+    throw std::runtime_error("target landmark has no incident face");
+  }
+  const Triangle& triangle = mesh.faces()[faces.front()].vertices;
+  std::array<double, 3> barycentric{0.0, 0.0, 0.0};
+  for (std::size_t local = 0; local < triangle.size(); ++local) {
+    if (triangle[local] == vertex) {
+      barycentric[local] = 1.0;
+    }
+  }
+  return SurfacePoint{faces.front(), barycentric};
+}
+
+double polylineLength(const std::vector<Vec3>& points) {
+  double length = 0.0;
+  for (std::size_t index = 1; index < points.size(); ++index) {
+    length += (points[index] - points[index - 1U]).norm();
+  }
+  return length;
+}
+
+PresetRoute buildPresetRoute(const TriangleMesh& mesh, const HeatMethodSolver& solver,
+                             const HeatMethodResult& heat, const DijkstraResult& dijkstra,
+                             Index source, Index target) {
+  const PathResult path =
+      traceDistanceGradient(mesh, solver.operators().faceGeometry, heat.distance, source,
+                            vertexSurfacePoint(mesh, target));
+  if (!path.reachedSource) {
+    throw std::runtime_error("preset path did not reach the source: " + path.termination);
+  }
+  PresetRoute route;
+  route.target = target;
+  route.heatPoints = path.points;
+  route.edgeVertices = reconstructVertexPath(dijkstra, target, source);
+  route.chordLength = (mesh.vertices()[target].position - mesh.vertices()[source].position).norm();
+  route.heatLength = polylineLength(route.heatPoints);
+  route.edgeLength = dijkstra.distance[static_cast<int>(target)];
+  if (route.edgeVertices.empty() || route.edgeVertices.back() != source ||
+      !std::isfinite(route.edgeLength)) {
+    throw std::runtime_error("preset edge route did not reach the source");
+  }
+  return route;
+}
 
 } // namespace
 
@@ -178,18 +219,26 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
     throw std::invalid_argument("web export requires at least one heat frame");
   }
   std::filesystem::create_directories(outputDirectory);
-  TriangleMesh mesh = makeCurvedWorld(PlanetOptions{options.subdivisions});
+  TriangleMesh mesh = makeCurvedWorld(CurvedWorldOptions{options.detailLevel});
+  CurvedWorldLandmarks landmarks = selectCurvedWorldLandmarks(mesh);
   const Index source =
-      options.sourceVertex == kInvalidIndex ? chooseBeacon(mesh) : options.sourceVertex;
+      options.sourceVertex == kInvalidIndex ? landmarks.source : options.sourceVertex;
   if (source >= mesh.vertices().size()) {
     throw std::invalid_argument("web export source is out of range");
   }
+  landmarks.source = source;
 
   HeatMethodOptions solverOptions;
   solverOptions.solver = CpuSolverKind::Direct;
   HeatMethodSolver solver(mesh, solverOptions);
   HeatMethodResult heat = solver.compute(source);
   DijkstraResult dijkstra = edgeDijkstra(mesh, source);
+  const std::array<Index, 3> presetTargets{landmarks.exterior, landmarks.tunnel, landmarks.farSide};
+  std::array<PresetRoute, 3> presetRoutes;
+  for (std::size_t index = 0; index < presetRoutes.size(); ++index) {
+    presetRoutes[index] =
+        buildPresetRoute(mesh, solver, heat, dijkstra, source, presetTargets[index]);
+  }
 
   std::vector<Vector> heatFrames;
   std::vector<double> frameTimes;
@@ -234,17 +283,20 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
   const std::filesystem::path binaryPath = outputDirectory / "world.bin";
   std::ofstream binary(binaryPath, std::ios::binary);
   requireStream(binary, binaryPath);
-  constexpr std::array<char, 8> magic{'G', 'E', 'O', 'W', 'R', 'L', 'D', '1'};
+  constexpr std::array<char, 8> magic{'G', 'E', 'O', 'W', 'R', 'L', 'D', '2'};
   binary.write(magic.data(), static_cast<std::streamsize>(magic.size()));
-  writeLittleEndian<std::uint32_t>(binary, 1U);
+  writeLittleEndian<std::uint32_t>(binary, 2U);
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(mesh.vertices().size()));
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(mesh.faces().size()));
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(heatFrames.size()));
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(samples.size()));
   writeLittleEndian<std::uint32_t>(binary, source);
-  writeLittleEndian<std::uint32_t>(binary, 0U);
+  writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(presetRoutes.size()));
   writeLittleEndian<double>(binary, solver.operators().meanEdgeLength);
   writeLittleEndian<double>(binary, solver.operators().suggestedTimeStep);
+  for (const PresetRoute& route : presetRoutes) {
+    writeLittleEndian<std::uint32_t>(binary, route.target);
+  }
   for (const double value : frameTimes) {
     writeLittleEndian<double>(binary, value);
   }
@@ -305,20 +357,58 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
       writeLittleEndian<float>(binary, static_cast<float>(sample.direction[axis]));
     }
   }
+  for (std::size_t index = 0; index < presetRoutes.size(); ++index) {
+    const PresetRoute& route = presetRoutes[index];
+    writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(index));
+    writeLittleEndian<std::uint32_t>(binary, route.target);
+    writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(route.heatPoints.size()));
+    writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(route.edgeVertices.size()));
+    writeLittleEndian<double>(binary, route.chordLength);
+    writeLittleEndian<double>(binary, route.heatLength);
+    writeLittleEndian<double>(binary, route.edgeLength);
+    for (const Vec3& point : route.heatPoints) {
+      for (int axis = 0; axis < 3; ++axis) {
+        writeLittleEndian<float>(binary, static_cast<float>(point[axis]));
+      }
+    }
+    for (const Index vertex : route.edgeVertices) {
+      writeLittleEndian<std::uint32_t>(binary, vertex);
+    }
+  }
   requireStream(binary, binaryPath);
 
   const std::filesystem::path metadataPath = outputDirectory / "world.meta.json";
   std::ofstream metadata(metadataPath);
   requireStream(metadata, metadataPath);
+  const long long eulerCharacteristic = static_cast<long long>(mesh.vertices().size()) -
+                                        static_cast<long long>(mesh.edges().size()) +
+                                        static_cast<long long>(mesh.faces().size());
   metadata
       << std::setprecision(12) << "{\n"
-      << "  \"schema\": \"geodesic-world-v1\",\n"
+      << "  \"schema\": \"geodesic-world-v2\",\n"
       << "  \"title\": \"The Shortest Path Through a Curved World\",\n"
-      << "  \"deterministicSeed\": " << PlanetOptions{}.seed << ",\n"
-      << "  \"subdivisions\": " << options.subdivisions << ",\n"
+      << "  \"deterministicSeed\": " << CurvedWorldOptions{}.seed << ",\n"
+      << "  \"detailLevel\": " << options.detailLevel << ",\n"
       << "  \"vertices\": " << mesh.vertices().size() << ",\n"
       << "  \"faces\": " << mesh.faces().size() << ",\n"
       << "  \"sourceVertex\": " << source << ",\n"
+      << "  \"topology\": {\"closed\": true, \"orientedManifold\": true, "
+         "\"eulerCharacteristic\": "
+      << eulerCharacteristic << ", \"genus\": 1},\n"
+      << "  \"targetPresets\": {\n"
+      << "    \"exterior\": {\"vertex\": " << landmarks.exterior
+      << ", \"chordLength\": " << presetRoutes[0].chordLength
+      << ", \"heatRouteLength\": " << presetRoutes[0].heatLength
+      << ", \"edgeRouteLength\": " << presetRoutes[0].edgeLength << "},\n"
+      << "    \"tunnel\": {\"vertex\": " << landmarks.tunnel
+      << ", \"chordLength\": " << presetRoutes[1].chordLength
+      << ", \"heatRouteLength\": " << presetRoutes[1].heatLength
+      << ", \"edgeRouteLength\": " << presetRoutes[1].edgeLength << "},\n"
+      << "    \"farSide\": {\"vertex\": " << landmarks.farSide
+      << ", \"chordLength\": " << presetRoutes[2].chordLength
+      << ", \"heatRouteLength\": " << presetRoutes[2].heatLength
+      << ", \"edgeRouteLength\": " << presetRoutes[2].edgeLength << "}\n"
+      << "  },\n"
       << "  \"meanEdgeLength\": " << solver.operators().meanEdgeLength << ",\n"
       << "  \"heatMethodTimeStep\": " << solver.operators().suggestedTimeStep << ",\n"
       << "  \"laplacianSign\": \"positive-semidefinite stiffness matrix approximating -Delta\",\n"
@@ -327,13 +417,13 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
       << "  \"heatResidual\": " << heat.heatReport.relativeResidual << ",\n"
       << "  \"poissonResidual\": " << heat.poissonReport.relativeResidual << ",\n"
       << "  \"zeroGradientFaces\": " << heat.zeroGradientFaces << ",\n"
+      << "  \"operatorAssemblyMilliseconds\": " << solver.operatorAssemblyMilliseconds() << ",\n"
+      << "  \"factorizationMilliseconds\": " << solver.factorizationMilliseconds() << ",\n"
       << "  \"preprocessingMilliseconds\": " << solver.preprocessingMilliseconds() << ",\n"
       << "  \"heatSolveMilliseconds\": " << heat.heatReport.milliseconds << ",\n"
       << "  \"poissonSolveMilliseconds\": " << heat.poissonReport.milliseconds << ",\n"
       << "  \"dijkstraMilliseconds\": " << dijkstra.milliseconds << ",\n"
-      << "  \"cpu\": \"Apple Clang/Eigen reference run on the local build host\",\n"
-      << "  \"gpu\": {\"available\": false, \"reason\": \"No NVIDIA CUDA device or toolchain was "
-         "available on the local validation host.\"},\n"
+      << "  \"engine\": \"C++20 with Eigen sparse direct and iterative solvers\",\n"
       << "  \"reference\": \"Crane, Weischedel, Wardetzky, Geodesics in Heat, ACM TOG 2013\"\n"
       << "}\n";
   requireStream(metadata, metadataPath);
@@ -343,6 +433,7 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
                          mesh.vertices().size(),
                          mesh.faces().size(),
                          source,
+                         landmarks,
                          heat.heatReport.relativeResidual,
                          heat.poissonReport.relativeResidual,
                          solver.preprocessingMilliseconds(),

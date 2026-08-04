@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -29,8 +30,17 @@ void orientOutward(std::vector<Vec3>& vertices, std::vector<Triangle>& faces) {
   }
 }
 
-double ridge(double value, double width) {
-  return std::exp(-(value * value) / width);
+Index nearestVertex(const TriangleMesh& mesh, const Vec3& target) {
+  Index best = 0;
+  double bestSquaredDistance = std::numeric_limits<double>::infinity();
+  for (Index vertex = 0; vertex < mesh.vertices().size(); ++vertex) {
+    const double squaredDistance = (mesh.vertices()[vertex].position - target).squaredNorm();
+    if (squaredDistance < bestSquaredDistance) {
+      bestSquaredDistance = squaredDistance;
+      best = vertex;
+    }
+  }
+  return best;
 }
 
 } // namespace
@@ -87,33 +97,95 @@ TriangleMesh makeIcosphere(int subdivisions, double radius) {
   return TriangleMesh::build(vertices, faces);
 }
 
-TriangleMesh makeCurvedWorld(const PlanetOptions& options) {
-  TriangleMesh sphere = makeIcosphere(options.subdivisions, 1.0);
+TriangleMesh makeCurvedWorld(const CurvedWorldOptions& options) {
+  if (options.detailLevel < 1 || options.detailLevel > 8 || !(options.majorRadius > 0.0) ||
+      !(options.minorRadius > 0.0) || options.majorRadius <= 1.65 * options.minorRadius ||
+      !(options.deformation >= 0.0) || options.deformation > 0.35 ||
+      !std::isfinite(options.majorRadius) || !std::isfinite(options.minorRadius) ||
+      !std::isfinite(options.deformation)) {
+    throw std::invalid_argument("invalid curved-world parameters");
+  }
+
+  const int majorSegments = 5 * (1 << options.detailLevel);
+  const int minorSegments = 2 * (1 << options.detailLevel);
+  const double twoPi = 2.0 * std::acos(-1.0);
+  const double phase = twoPi * static_cast<double>(options.seed % 10007U) / 10007.0;
   std::vector<Vec3> positions;
-  positions.reserve(sphere.vertices().size());
-  const double phase = static_cast<double>(options.seed % 10007U) / 10007.0;
-  for (const auto& vertex : sphere.vertices()) {
-    const Vec3 q = vertex.position.normalized();
-    const double broad = 0.42 * std::sin(3.4 * q.x() + 1.1 * q.y() - 0.7 + phase) *
-                             std::cos(3.1 * q.z() - 0.8 * q.x()) +
-                         0.23 * std::sin(7.3 * (q.x() - 0.45 * q.y() + 0.32 * q.z()));
-    const double foldedRidge = 0.38 * ridge(std::sin(2.5 * q.x() + 1.7 * q.z()) - 0.25, 0.035);
-    const double valley = -0.34 * ridge(q.x() + 0.35, 0.055) * ridge(q.z() - 0.15, 0.18);
-    const double passage = -0.21 * ridge(q.y() + 0.08, 0.018) * std::cos(5.0 * q.x());
-    const double radial =
-        options.radius * (1.0 + options.relief * (broad + foldedRidge + valley + passage));
-    const Vec3 tangentWarp = options.radius * options.relief * 0.035 *
-                             std::sin(5.0 * q.z() + 2.0 * q.x()) *
-                             Vec3(-q.y(), q.x(), 0.35 * q.y());
-    positions.push_back(radial * q + tangentWarp);
+  positions.reserve(static_cast<std::size_t>(majorSegments * minorSegments));
+  for (int major = 0; major < majorSegments; ++major) {
+    const double u = twoPi * static_cast<double>(major) / static_cast<double>(majorSegments);
+    const Vec3 radial(std::cos(u), std::sin(u), 0.0);
+    const Vec3 tangent(-std::sin(u), std::cos(u), 0.0);
+    const double centerRadius =
+        options.majorRadius *
+        (1.0 + options.deformation *
+                   (0.28 * std::sin(3.0 * u + phase) + 0.16 * std::cos(5.0 * u - 0.4 * phase)));
+    const double centerHeight =
+        options.majorRadius * options.deformation *
+        (0.20 * std::sin(2.0 * u + 0.7 * phase) + 0.07 * std::cos(5.0 * u - phase));
+    for (int minor = 0; minor < minorSegments; ++minor) {
+      const double v = twoPi * static_cast<double>(minor) / static_cast<double>(minorSegments);
+      const double tubeScale =
+          1.0 + options.deformation * (0.36 * std::sin(3.0 * u + phase) +
+                                       0.16 * std::cos(2.0 * v - 2.0 * u + 0.3 * phase));
+      const double radialOffset =
+          options.minorRadius * tubeScale * (1.0 + 0.06 * std::sin(u + 2.0 * v)) * std::cos(v);
+      const double verticalOffset =
+          options.minorRadius * tubeScale * (0.92 + 0.06 * std::cos(2.0 * u - phase)) * std::sin(v);
+      const double tangentOffset =
+          options.minorRadius * options.deformation * 0.10 * std::sin(2.0 * v + 3.0 * u + phase);
+      positions.push_back((centerRadius + radialOffset) * radial + tangentOffset * tangent +
+                          Vec3(0.0, 0.0, centerHeight + verticalOffset));
+    }
   }
+
   std::vector<Triangle> faces;
-  faces.reserve(sphere.faces().size());
-  for (const auto& face : sphere.faces()) {
-    faces.push_back(face.vertices);
+  faces.reserve(static_cast<std::size_t>(majorSegments * minorSegments * 2));
+  const auto index = [minorSegments](int major, int minor) {
+    return static_cast<Index>(major * minorSegments + minor);
+  };
+  for (int major = 0; major < majorSegments; ++major) {
+    const int nextMajor = (major + 1) % majorSegments;
+    for (int minor = 0; minor < minorSegments; ++minor) {
+      const int nextMinor = (minor + 1) % minorSegments;
+      const Index a = index(major, minor);
+      const Index b = index(nextMajor, minor);
+      const Index c = index(major, nextMinor);
+      const Index d = index(nextMajor, nextMinor);
+      faces.push_back({a, b, d});
+      faces.push_back({a, d, c});
+    }
   }
-  orientOutward(positions, faces);
   return TriangleMesh::build(positions, faces);
+}
+
+CurvedWorldLandmarks selectCurvedWorldLandmarks(const TriangleMesh& mesh) {
+  if (mesh.vertices().empty()) {
+    throw std::invalid_argument("landmark selection requires a nonempty mesh");
+  }
+  CurvedWorldLandmarks result;
+  result.source = nearestVertex(mesh, Vec3(0.82, -1.20, 0.34));
+  result.exterior = nearestVertex(mesh, Vec3(1.42, 0.66, 0.08));
+  result.tunnel = nearestVertex(mesh, Vec3(-0.54, 0.26, 0.08));
+
+  double farthestSquaredDistance = -1.0;
+  const Vec3 sourcePosition = mesh.vertices()[result.source].position;
+  for (Index vertex = 0; vertex < mesh.vertices().size(); ++vertex) {
+    const Vec3& position = mesh.vertices()[vertex].position;
+    const double radialDistance = std::hypot(position.x(), position.y());
+    if (radialDistance < 0.9) {
+      continue;
+    }
+    const double squaredDistance = (position - sourcePosition).squaredNorm();
+    if (squaredDistance > farthestSquaredDistance) {
+      farthestSquaredDistance = squaredDistance;
+      result.farSide = vertex;
+    }
+  }
+  if (result.farSide == kInvalidIndex) {
+    throw std::runtime_error("could not select the far-side landmark");
+  }
+  return result;
 }
 
 TriangleMesh makePlanarGrid(int rows, int columns, double spacing) {

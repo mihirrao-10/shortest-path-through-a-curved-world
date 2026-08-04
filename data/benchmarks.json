@@ -1,0 +1,18 @@
+{
+  "schema": "geodesic-benchmark-v2",
+  "clock": "std::chrono::steady_clock",
+  "precision": "float64",
+  "host": "Apple M4 (10-core), 16 GB, macOS 26.5",
+  "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+  "buildType": "Release",
+  "warmupQueries": 1,
+  "reusedSourceCount": 8,
+  "dijkstraRepetitions": 7,
+  "cases": [
+    {"detailLevel": 2, "vertices": 160, "faces": 320, "meshMilliseconds": 0.191209, "operatorAssemblyMilliseconds": 0.051083, "factorizationMilliseconds": 0.256792, "preprocessingMilliseconds": 0.307875, "oneHeatQueryMilliseconds": 0.019583, "meanReusedHeatQueryMilliseconds": 0.0175675, "dijkstraQueryMilliseconds": 0.01608342857, "heatResidual": 4.847336204e-16, "poissonResidual": 4.221665398e-15},
+    {"detailLevel": 3, "vertices": 640, "faces": 1280, "meshMilliseconds": 0.479167, "operatorAssemblyMilliseconds": 0.162667, "factorizationMilliseconds": 0.84525, "preprocessingMilliseconds": 1.007917, "oneHeatQueryMilliseconds": 0.06975, "meanReusedHeatQueryMilliseconds": 0.05294775, "dijkstraQueryMilliseconds": 0.04110742857, "heatResidual": 3.484663812e-16, "poissonResidual": 1.668416012e-14},
+    {"detailLevel": 4, "vertices": 2560, "faces": 5120, "meshMilliseconds": 1.086625, "operatorAssemblyMilliseconds": 0.404875, "factorizationMilliseconds": 3.245709, "preprocessingMilliseconds": 3.650584, "oneHeatQueryMilliseconds": 0.219916, "meanReusedHeatQueryMilliseconds": 0.278911625, "dijkstraQueryMilliseconds": 0.2509105714, "heatResidual": 8.188628169e-16, "poissonResidual": 5.714782434e-14},
+    {"detailLevel": 5, "vertices": 10240, "faces": 20480, "meshMilliseconds": 5.659875, "operatorAssemblyMilliseconds": 1.857083, "factorizationMilliseconds": 23.285042, "preprocessingMilliseconds": 25.142125, "oneHeatQueryMilliseconds": 1.144459, "meanReusedHeatQueryMilliseconds": 1.152182375, "dijkstraQueryMilliseconds": 0.8251668571, "heatResidual": 2.789382006e-16, "poissonResidual": 1.986613642e-13},
+    {"detailLevel": 6, "vertices": 40960, "faces": 81920, "meshMilliseconds": 24.429917, "operatorAssemblyMilliseconds": 5.6765, "factorizationMilliseconds": 147.369625, "preprocessingMilliseconds": 153.046125, "oneHeatQueryMilliseconds": 5.054125, "meanReusedHeatQueryMilliseconds": 5.24642725, "dijkstraQueryMilliseconds": 3.608124857, "heatResidual": 3.547665377e-16, "poissonResidual": 7.073635529e-13}
+  ]
+}

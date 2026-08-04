@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cpu-web:
+  native-web:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the repository
@@ -26,10 +26,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libeigen3-dev clang-format
 
       - name: Check native formatting
-        run: find native -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cu' \) -print0 | xargs -0 clang-format --dry-run --Werror
+        run: find native -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
 
-      - name: Configure the CPU build
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEODESIC_ENABLE_CUDA=OFF
+      - name: Configure the native build
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build the native tools
         run: cmake --build build --parallel 2
@@ -69,28 +69,9 @@ jobs:
         with:
           path: web/dist
 
-  cuda-compile:
-    runs-on: ubuntu-latest
-    container: nvidia/cuda:12.6.3-devel-ubuntu22.04
-    steps:
-      - name: Install build dependencies
-        run: apt-get update && apt-get install -y cmake ninja-build git ca-certificates libeigen3-dev
-
-      - name: Check out the repository
-        uses: actions/checkout@v4
-
-      - name: Configure CUDA
-        run: cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEODESIC_ENABLE_CUDA=ON
-
-      - name: Compile CPU and CUDA targets
-        run: cmake --build build-cuda --parallel 2
-
-      - name: Run CUDA-linked tests (device checks skip without a GPU)
-        run: ctest --test-dir build-cuda --output-on-failure
-
   deploy:
     if: github.event_name != 'pull_request'
-    needs: [cpu-web, cuda-compile]
+    needs: [native-web]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
