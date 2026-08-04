@@ -5,23 +5,67 @@
   "subdivisions": 5,
   "vertices": 10242,
   "faces": 20480,
-  "sourceVertex": 7959,
-  "meanEdgeLength": 0.0392187763696,
-  "heatMethodTimeStep": 0.00153811241993,
+  "sourceVertex": 8014,
+  "meanEdgeLength": 0.0401499792133,
+  "heatMethodTimeStep": 0.00161202083083,
   "laplacianSign": "positive-semidefinite stiffness matrix approximating -Delta",
   "boundaryCondition": "natural Neumann; primary world is closed",
   "heatEncoding": "per-frame log(u), linearly quantized to uint16",
-  "heatResidual": 2.8314836498e-16,
-  "poissonResidual": 3.53014059417e-13,
+  "heatResidual": 2.60904396562e-16,
+  "poissonResidual": 2.94192360586e-13,
   "zeroGradientFaces": 0,
-  "preprocessingMilliseconds": 41.554458,
-  "heatSolveMilliseconds": 0.506792,
-  "poissonSolveMilliseconds": 0.686042,
-  "dijkstraMilliseconds": 0.891125,
-  "cpu": "Apple Clang/Eigen reference run on the local build host",
+  "routePresets": [
+    {
+      "id": "ridge-crossing",
+      "label": "Ridge crossing",
+      "description": "Cross the raised folded ridge from the high northern lobe.",
+      "startFace": 1361,
+      "startBarycentric": [0.24, 0.33, 0.43],
+      "dijkstraStartVertex": 786,
+      "ambientChordLength": 1.80082760466,
+      "edgeDijkstraRouteLength": 2.65057174144,
+      "tracedHeatMethodRouteLength": 2.52061670049,
+      "tracingReachedSource": true,
+      "fallbackUsed": false
+    },
+    {
+      "id": "saddle-pass",
+      "label": "Saddle pass",
+      "description": "Enter through the low saddle where two slopes trade height.",
+      "startFace": 11936,
+      "startBarycentric": [0.41, 0.22, 0.37],
+      "dijkstraStartVertex": 7170,
+      "ambientChordLength": 1.42815974503,
+      "edgeDijkstraRouteLength": 1.61170883217,
+      "tracedHeatMethodRouteLength": 1.50765892425,
+      "tracingReachedSource": true,
+      "fallbackUsed": false
+    },
+    {
+      "id": "basin-rim",
+      "label": "Basin rim",
+      "description": "Trace the long rim of the deep asymmetric basin.",
+      "startFace": 866,
+      "startBarycentric": [0.29, 0.46, 0.25],
+      "dijkstraStartVertex": 2921,
+      "ambientChordLength": 1.96573806942,
+      "edgeDijkstraRouteLength": 3.18671625333,
+      "tracedHeatMethodRouteLength": 2.99429175907,
+      "tracingReachedSource": true,
+      "fallbackUsed": false
+    }
+  ],
+  "exportDiagnostics": {
+    "scope": "Machine-specific timings from this export run, not canonical benchmark results",
+    "host": "local macOS export run (hardware not recorded)",
+    "preprocessingMilliseconds": 34.934667,
+    "heatSolveMilliseconds": 0.453541,
+    "poissonSolveMilliseconds": 0.610375,
+    "dijkstraMilliseconds": 0.851625
+  },
   "gpu": {
     "available": false,
-    "reason": "No NVIDIA CUDA device or toolchain was available on the local validation host."
+    "reason": "This CPU export run contains no CUDA runtime measurement."
   },
   "reference": "Crane, Weischedel, Wardetzky, Geodesics in Heat, ACM TOG 2013"
 }

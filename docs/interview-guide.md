@@ -45,8 +45,8 @@ Every solve reports a true residual.
 
 For the route, I follow \(-\nabla\phi\) inside a face, calculate which barycentric coordinate hits zero
 first, cross the corresponding halfedge twin, and continue. The web exporter stores positions,
-indices, adjacency, heat frames, distances, gradients, and Dijkstra parents. That supports one visitor
-click with a fixed beacon and one genuine precomputed field.
+indices, adjacency, heat frames, distances, gradients, and Dijkstra parents. Three native-authored
+barycentric starts share one fixed beacon and one genuine precomputed field.
 
 ## The 10-minute version
 
@@ -188,14 +188,15 @@ evidence before becoming the reference.
 
 ### 8. Website data and narrative
 
-The source beacon is fixed. Therefore one native distance field supports arbitrary visitor starts. A
-click raycasts to a face and barycentric point; browser tracing follows that exported field. Six
-additional heat solves provide the diffusion animation. Log quantization preserves many orders of
-magnitude while keeping the payload under 1 MB.
+The source beacon is fixed. Therefore one native distance field supports all three authored starts.
+Each preset exports a face, barycentric coordinates, a documented nearest Dijkstra vertex, actual
+route lengths, and trace status. Browser tracing follows the same exported field. Six additional heat
+solves provide the diffusion animation. Log quantization preserves many orders of magnitude while
+keeping the payload under 1 MB.
 
-The narrative state machine exposes one action at a time. Advanced implementation details appear only
-after the answer. Mobile keeps a 43–46% viewport scene above the text; reduced motion freezes approach,
-pulse timing, and smooth scroll without removing content.
+The narrative keeps one shared mathematical and technical arc, with a compact three-child route tree
+at its midpoint. Mobile caps the stage near 340 pixels and keeps it separate from the text; reduced
+motion freezes approach, pulse timing, and smooth scroll without removing content.
 
 ### 9. Validation and measured result
 
@@ -223,7 +224,7 @@ twin.
 ### Intrinsic versus extrinsic
 
 Draw two points on a bent sheet. Draw a 3D chord and a route on the sheet. Say: intrinsic quantities
-depend only on the metric—edge lengths and angles—not how the surface is embedded.
+depend only on the metric, meaning edge lengths and angles, not how the surface is embedded.
 
 ### Cotangent Laplacian
 

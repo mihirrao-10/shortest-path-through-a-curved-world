@@ -23,6 +23,27 @@ struct WebExportOptions {
   std::vector<double> heatTimeMultipliers{0.25, 1.0, 4.0, 16.0, 64.0, 256.0};
 };
 
+struct WebRoutePreset {
+  std::string id;
+  std::string label;
+  std::string description;
+  SurfacePoint start;
+  Index dijkstraStartVertex{kInvalidIndex};
+  double ambientChordLength{0.0};
+  double edgeDijkstraRouteLength{0.0};
+  double tracedHeatMethodRouteLength{0.0};
+  bool tracingReachedSource{false};
+  bool fallbackUsed{false};
+  std::vector<Vec3> tracedPoints;
+  std::vector<Index> edgeVertices;
+};
+
+std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mesh,
+                                                         const HeatMethodSolver& solver,
+                                                         const HeatMethodResult& heat,
+                                                         const DijkstraResult& dijkstra,
+                                                         Index sourceVertex);
+
 struct WebExportReport {
   std::filesystem::path binaryPath;
   std::filesystem::path metadataPath;
@@ -33,6 +54,7 @@ struct WebExportReport {
   double poissonResidual{0.0};
   double preprocessingMilliseconds{0.0};
   double queryMilliseconds{0.0};
+  std::vector<WebRoutePreset> routePresets;
 };
 
 WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,

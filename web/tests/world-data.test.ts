@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { traceSurfacePath } from "../src/path-tracer";
-import { parseWorldBinary } from "../src/world-data";
+import {
+  parseWorldBinary,
+  parseWorldMetadata,
+  type RoutePreset,
+} from "../src/world-data";
 
 function loadWorld() {
   const bytes = readFileSync(
@@ -13,6 +17,38 @@ function loadWorld() {
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
   return parseWorldBinary(buffer);
+}
+
+function loadMetadata(world: ReturnType<typeof loadWorld>) {
+  const value = JSON.parse(
+    readFileSync(
+      new URL("../public/data/world.meta.json", import.meta.url),
+      "utf8",
+    ),
+  ) as unknown;
+  return parseWorldMetadata(value, world);
+}
+
+function routeStart(world: ReturnType<typeof loadWorld>, preset: RoutePreset) {
+  const point = new THREE.Vector3();
+  for (let local = 0; local < 3; local += 1) {
+    point.addScaledVector(
+      new THREE.Vector3().fromArray(
+        world.positions,
+        3 * world.indices[3 * preset.startFace + local]!,
+      ),
+      preset.startBarycentric[local]!,
+    );
+  }
+  return { face: preset.startFace, point };
+}
+
+function polylineLength(points: readonly THREE.Vector3[]) {
+  let length = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    length += points[index - 1]!.distanceTo(points[index]!);
+  }
+  return length;
 }
 
 describe("engine world export", () => {
@@ -27,6 +63,106 @@ describe("engine world export", () => {
     expect(world.gradientSamples.length).toBeGreaterThan(200);
     expect(world.distance[world.sourceVertex]).toBeCloseTo(0, 7);
     expect(Math.max(...world.distance)).toBeGreaterThan(2);
+  });
+
+  it("contains the deterministic closed asymmetric world", () => {
+    const world = loadWorld();
+    expect([...world.faceAdjacency].every((face) => face >= 0)).toBe(true);
+    const radii: number[] = [];
+    const minimum = new THREE.Vector3(
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+    );
+    const maximum = new THREE.Vector3(
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    );
+    for (let vertex = 0; vertex < world.vertexCount; vertex += 1) {
+      const point = new THREE.Vector3().fromArray(world.positions, 3 * vertex);
+      radii.push(point.length());
+      minimum.min(point);
+      maximum.max(point);
+    }
+    expect(Math.max(...radii) / Math.min(...radii)).toBeGreaterThan(1.7);
+    const extents = maximum.sub(minimum).toArray();
+    expect(Math.max(...extents) / Math.min(...extents)).toBeGreaterThan(1.35);
+  });
+
+  it("validates three real barycentric route presets against the shared fields", () => {
+    const world = loadWorld();
+    const metadata = loadMetadata(world);
+    expect(metadata.routePresets.map((preset) => preset.id)).toEqual([
+      "ridge-crossing",
+      "saddle-pass",
+      "basin-rim",
+    ]);
+    expect(
+      new Set(metadata.routePresets.map((preset) => preset.startFace)).size,
+    ).toBe(3);
+    const tracedLengths: number[] = [];
+    const starts: THREE.Vector3[] = [];
+    for (const preset of metadata.routePresets) {
+      const start = routeStart(world, preset);
+      starts.push(start.point);
+      const traced = traceSurfacePath(world, start);
+      const length = polylineLength(traced.points);
+      tracedLengths.push(length);
+      expect(traced.faces).toHaveLength(traced.points.length);
+      expect(traced.reachedSource).toBe(true);
+      expect(traced.usedFallback).toBe(false);
+      expect(length).toBeCloseTo(preset.tracedHeatMethodRouteLength, 3);
+
+      const source = new THREE.Vector3().fromArray(
+        world.positions,
+        3 * world.sourceVertex,
+      );
+      expect(start.point.distanceTo(source)).toBeCloseTo(
+        preset.ambientChordLength,
+        4,
+      );
+      let edgeLength = start.point.distanceTo(
+        new THREE.Vector3().fromArray(
+          world.positions,
+          3 * preset.dijkstraStartVertex,
+        ),
+      );
+      let current = preset.dijkstraStartVertex;
+      for (let step = 0; step <= world.vertexCount; step += 1) {
+        if (current === world.sourceVertex) break;
+        const next = world.dijkstraPredecessor[current]!;
+        expect(next).not.toBe(0xffffffff);
+        edgeLength += new THREE.Vector3()
+          .fromArray(world.positions, 3 * current)
+          .distanceTo(new THREE.Vector3().fromArray(world.positions, 3 * next));
+        current = next;
+      }
+      expect(current).toBe(world.sourceVertex);
+      expect(edgeLength).toBeCloseTo(preset.edgeDijkstraRouteLength, 3);
+      expect(preset.edgeDijkstraRouteLength).toBeGreaterThan(
+        preset.ambientChordLength,
+      );
+      expect(preset.tracedHeatMethodRouteLength).toBeGreaterThan(
+        preset.ambientChordLength,
+      );
+      expect(preset.tracedHeatMethodRouteLength).toBeLessThanOrEqual(
+        1.25 * preset.edgeDijkstraRouteLength,
+      );
+      expect(preset.tracingReachedSource).toBe(true);
+      expect(preset.fallbackUsed).toBe(false);
+    }
+    for (let first = 0; first < starts.length; first += 1) {
+      for (let second = first + 1; second < starts.length; second += 1) {
+        expect(starts[first]!.distanceTo(starts[second]!)).toBeGreaterThan(0.4);
+        expect(
+          Math.abs(tracedLengths[first]! - tracedLengths[second]!),
+        ).toBeGreaterThan(0.01);
+      }
+    }
+    expect(metadata.exportDiagnostics.scope).toContain(
+      "not canonical benchmark",
+    );
   });
 
   it("traces the exported field from a far face to the source", () => {

@@ -8,6 +8,7 @@ export interface SurfaceStart {
 
 export interface TracedPath {
   points: THREE.Vector3[];
+  faces: number[];
   reachedSource: boolean;
   usedFallback: boolean;
   termination: string;
@@ -120,6 +121,7 @@ function vertexFallback(
   initialVertex: number,
   source: number,
   points: THREE.Vector3[],
+  faces: number[],
   maxSteps: number,
 ): boolean {
   const visited = new Set<number>();
@@ -128,8 +130,10 @@ function vertexFallback(
     if (visited.has(current)) return false;
     visited.add(current);
     const point = vertex(data, current);
-    if ((points.at(-1)?.distanceToSquared(point) ?? 1) > 1e-18)
+    if ((points.at(-1)?.distanceToSquared(point) ?? 1) > 1e-18) {
       points.push(point);
+      faces.push(-1);
+    }
     if (current === source) return true;
     let best = current;
     let bestDistance = data.distance[current]!;
@@ -164,6 +168,7 @@ export function traceSurfacePath(
   let face = start.face;
   let point = start.point.clone();
   const points = [point.clone()];
+  const faces = [face];
   const visits = new Uint8Array(data.faceCount);
 
   const fallback = (reason: string): TracedPath => {
@@ -180,10 +185,12 @@ export function traceSurfacePath(
       initial,
       source,
       points,
+      faces,
       maxSteps - points.length,
     );
     return {
       points,
+      faces,
       reachedSource: reached,
       usedFallback: true,
       termination: reached
@@ -195,8 +202,10 @@ export function traceSurfacePath(
   for (let step = 0; step < maxSteps; step += 1) {
     if (point.distanceTo(sourcePoint) <= sourceRadius) {
       points.push(sourcePoint);
+      faces.push(-1);
       return {
         points,
+        faces,
         reachedSource: true,
         usedFallback: false,
         termination: "source neighborhood",
@@ -214,8 +223,10 @@ export function traceSurfacePath(
     );
     if (interpolated <= sourceRadius) {
       points.push(sourcePoint);
+      faces.push(-1);
       return {
         points,
+        faces,
         reachedSource: true,
         usedFallback: false,
         termination: "distance neighborhood",
@@ -239,8 +250,10 @@ export function traceSurfacePath(
     if (!Number.isFinite(crossingTime))
       return fallback("descent ray stayed inside one face");
     const crossing = point.clone().addScaledVector(direction, crossingTime);
-    if (points.at(-1)!.distanceTo(crossing) > nudge * 0.01)
+    if (points.at(-1)!.distanceTo(crossing) > nudge * 0.01) {
       points.push(crossing.clone());
+      faces.push(face);
+    }
 
     const crossedEdges: number[] = [];
     for (let local = 0; local < 3; local += 1) {

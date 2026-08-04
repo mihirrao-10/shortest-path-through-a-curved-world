@@ -6,9 +6,10 @@ An end-to-end C++20/CUDA implementation of the Heat Method for geodesic distance
 meshes, paired with a guided Three.js explanation of one central idea: **heat can reveal
 distance**.
 
-The public experience is designed as a continuous story rather than a solver dashboard. A visitor
-places one explorer, sees why the ambient straight line fails, reveals the triangle mesh, releases
-real precomputed heat, follows the reconstructed distance gradient, and arrives at the beacon.
+The public experience is a compact branching story rather than a solver dashboard. A visitor sees
+why the ambient straight line fails, chooses one of three authored surface starts, releases real
+precomputed heat, follows the reconstructed distance gradient, and compares three routes to one
+shared beacon.
 
 - Project site: <https://mihirrao-10.github.io/shortest-path-through-a-curved-world/>
 - Source repository: <https://github.com/mihirrao-10/shortest-path-through-a-curved-world>
@@ -28,10 +29,13 @@ Central, CGAL, or a black-box geodesic routine.
 - Heat Method with direct and iterative Eigen sparse solves, residual checks, and reusable factors
 - Face-wise path tracing with barycentric edge crossings and guarded fallback behavior
 - Edge-weighted Dijkstra baseline with predecessor reconstruction
-- Deterministic procedural curved-world and icosphere generators
+- Deterministic genus-zero curved-world and icosphere generators, with a ridge, basin, saddle,
+  compressed channel, anisotropy, and unequal lobes
 - OBJ import/export, scalar CSV export, path OBJ export, benchmark CLI, and compact web exporter
 - Optional CUDA double-precision PCG using cuSPARSE SpMV, cuBLAS reductions, Jacobi
   preconditioning, resident matrix/work buffers, geometry kernels, and vector kernels
+- Three native-authored barycentric route presets with real chord, Dijkstra, and traced Heat Method
+  measurements from one shared distance field
 - TypeScript binary parser and the same face-wise distance-gradient trace in the browser
 - Vitest and Playwright coverage plus GitHub Pages deployment through GitHub Actions
 
@@ -104,7 +108,8 @@ Trace a route and write a polyline OBJ:
 Regenerate the data used by the website:
 
 ```sh
-./build/geodesic_cli export-web --subdivisions 5 --output web/public/data
+GEODESIC_EXPORT_HOST="local export host description" \
+  ./build/geodesic_cli export-web --subdivisions 5 --output web/public/data
 ./build/geodesic_benchmark \
   --min-subdiv 2 --max-subdiv 6 --repetitions 7 \
   --host "your reproducible host description" \
@@ -181,14 +186,28 @@ arbitrary barycentric surface point, the tracer:
 
 1. computes the negative face gradient;
 2. converts that direction into three barycentric velocities;
-3. finds the first coordinate to reach zero—the next crossed edge;
+3. finds the first coordinate to reach zero, which identifies the next crossed edge;
 4. moves through the halfedge twin to the adjacent face;
 5. nudges into that face and repeats until entering the source neighborhood.
 
 It detects repeated faces, vanishing gradients, boundary exits, invalid barycentric states, and a
 maximum step count. At a critical point it can switch to a monotone one-ring descent. The browser
-receives face adjacency and vertex distances and performs the same procedure after raycasting the
-visitor's one click onto the exported mesh.
+receives face adjacency and vertex distances and performs the same procedure from each exported
+barycentric route start.
+
+## Procedural world and authored routes
+
+`makeCurvedWorld()` retains the original refined-icosphere topology and the original low-frequency
+deformation terms. It strengthens them with a moderate anisotropic base, a localized folded ridge,
+a deep basin with a rim, a controlled saddle, a compressed channel, unequal lobes, and a larger
+smooth tangential warp. The result remains closed, oriented, manifold, genus zero, origin
+enclosing, and sufficiently star-shaped for the existing outward-orientation logic.
+
+The exporter selects `ridge-crossing`, `saddle-pass`, and `basin-rim` from deterministic native
+feature directions. Each start is stored as a face index plus barycentric coordinates. Native code
+interpolates the start, traces the shared Heat Method field, reconstructs Dijkstra from the nearest
+documented start vertex, measures the real polylines, and rejects a preset that does not reach the
+source or needs fallback. No redundant Heat Method field is computed or exported.
 
 ## CUDA backend
 
@@ -223,6 +242,11 @@ tested automatically whenever a CUDA device is actually present. No GPU timing i
 - adaptively sampled normalized face gradients;
 - source, scale, time-step, and layout metadata.
 
+`world.meta.json` adds the three authored route records, including labels, descriptions,
+barycentric starts, nearest Dijkstra vertices, all three lengths, and trace/fallback status.
+Machine-specific solve times are explicitly labeled as diagnostics from the export run and carry a
+host description. They are separate from the canonical benchmark data.
+
 `world.meta.json` records the seed, counts, sign convention, boundary policy, residuals, timings,
 and GPU availability. The complete byte layout is documented in [`data/schema.md`](data/schema.md).
 The binary is currently about 968 KB rather than several megabytes of uncompressed JSON.
@@ -242,7 +266,7 @@ unavailable on this host.
 | 81,920 | 40,962 | 287.14 ms | 5.84 ms | 3.85 ms |
 
 These results are deliberately not presented as a CPU speedup: edge Dijkstra is faster at the two
-largest measured cases. It solves a different problem—the shortest route on the edge graph—while
+largest measured cases. It solves a different problem, the shortest route on the edge graph, while
 the Heat Method reconstructs a scalar field over the surface. The factorization becomes useful when
 many field queries share one mesh; the optional CUDA path targets the linear-algebra work but has no
 published timing until it is measured on real hardware.
@@ -275,10 +299,11 @@ node scripts/validate-links.mjs web/dist
 git diff --check
 ```
 
-Playwright runs the story at 1440×900, 1280×800, 1024×768, 390×844, and 375×667. It checks
-WebGL startup, the release action, story progression, keyboard placement, reduced motion, and
-horizontal overflow. `web/scripts/capture-visuals.mjs` captures representative desktop and mobile
-frames for human inspection.
+Playwright runs the story at 1440×900, 1280×800, 1024×768, 768×1024, 390×844, 375×667, and
+320×568. It checks WebGL startup, all route branches, real metric updates, replay and comparison,
+black surfaces, keyboard input, reduced motion, fallback behavior, and horizontal overflow.
+`web/scripts/capture-visuals.mjs` captures representative desktop and mobile frames for human
+inspection.
 
 ## Repository map
 

@@ -6,7 +6,8 @@ build_dir="${project_root}/build-cpu"
 
 cmake -S "${project_root}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release -DGEODESIC_ENABLE_CUDA=OFF
 cmake --build "${build_dir}" --parallel
-"${build_dir}/geodesic_cli" export-web --subdivisions 5 --output "${project_root}/web/public/data"
+GEODESIC_EXPORT_HOST="${GEODESIC_EXPORT_HOST:-unspecified local export host}" \
+  "${build_dir}/geodesic_cli" export-web --subdivisions 5 --output "${project_root}/web/public/data"
 "${build_dir}/geodesic_benchmark" \
   --min-subdiv 2 \
   --max-subdiv 6 \

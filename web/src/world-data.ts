@@ -14,13 +14,33 @@ export interface WorldMetadata {
   heatResidual: number;
   poissonResidual: number;
   zeroGradientFaces: number;
-  preprocessingMilliseconds: number;
-  heatSolveMilliseconds: number;
-  poissonSolveMilliseconds: number;
-  dijkstraMilliseconds: number;
-  cpu: string;
+  routePresets: RoutePreset[];
+  exportDiagnostics: {
+    scope: string;
+    host: string;
+    preprocessingMilliseconds: number;
+    heatSolveMilliseconds: number;
+    poissonSolveMilliseconds: number;
+    dijkstraMilliseconds: number;
+  };
   gpu: { available: boolean; reason: string };
   reference: string;
+}
+
+export type RoutePresetId = "ridge-crossing" | "saddle-pass" | "basin-rim";
+
+export interface RoutePreset {
+  id: RoutePresetId;
+  label: string;
+  description: string;
+  startFace: number;
+  startBarycentric: readonly [number, number, number];
+  dijkstraStartVertex: number;
+  ambientChordLength: number;
+  edgeDijkstraRouteLength: number;
+  tracedHeatMethodRouteLength: number;
+  tracingReachedSource: boolean;
+  fallbackUsed: boolean;
 }
 
 export interface GradientSample {
@@ -53,6 +73,130 @@ export interface WorldData {
 }
 
 const MAGIC = "GEOWRLD1";
+const ROUTE_IDS = ["ridge-crossing", "saddle-pass", "basin-rim"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function parseRoutePresets(value: unknown, data: WorldData): RoutePreset[] {
+  if (!Array.isArray(value) || value.length !== ROUTE_IDS.length) {
+    throw new Error("World metadata must contain three route presets");
+  }
+  return value.map((candidate, index) => {
+    if (!isRecord(candidate)) throw new Error("World route preset is invalid");
+    const barycentric = candidate.startBarycentric;
+    if (
+      candidate.id !== ROUTE_IDS[index] ||
+      typeof candidate.label !== "string" ||
+      candidate.label.length === 0 ||
+      typeof candidate.description !== "string" ||
+      candidate.description.length === 0 ||
+      !Number.isInteger(candidate.startFace) ||
+      (candidate.startFace as number) < 0 ||
+      (candidate.startFace as number) >= data.faceCount ||
+      !Array.isArray(barycentric) ||
+      barycentric.length !== 3 ||
+      !barycentric.every(isFiniteNumber) ||
+      barycentric.some((weight) => weight < 0 || weight > 1) ||
+      Math.abs(barycentric.reduce((sum, weight) => sum + weight, 0) - 1) >
+        1e-8 ||
+      !Number.isInteger(candidate.dijkstraStartVertex) ||
+      (candidate.dijkstraStartVertex as number) < 0 ||
+      (candidate.dijkstraStartVertex as number) >= data.vertexCount ||
+      !isFiniteNumber(candidate.ambientChordLength) ||
+      !isFiniteNumber(candidate.edgeDijkstraRouteLength) ||
+      !isFiniteNumber(candidate.tracedHeatMethodRouteLength) ||
+      candidate.ambientChordLength <= 0 ||
+      candidate.edgeDijkstraRouteLength <= 0 ||
+      candidate.tracedHeatMethodRouteLength <= 0 ||
+      candidate.edgeDijkstraRouteLength <= candidate.ambientChordLength ||
+      candidate.tracedHeatMethodRouteLength <= candidate.ambientChordLength ||
+      candidate.tracedHeatMethodRouteLength >
+        1.25 * candidate.edgeDijkstraRouteLength ||
+      candidate.tracingReachedSource !== true ||
+      candidate.fallbackUsed !== false
+    ) {
+      throw new Error(`World route preset ${ROUTE_IDS[index]} is invalid`);
+    }
+    const id = ROUTE_IDS[index]!;
+    return {
+      id,
+      label: candidate.label,
+      description: candidate.description,
+      startFace: candidate.startFace as number,
+      startBarycentric: barycentric as [number, number, number],
+      dijkstraStartVertex: candidate.dijkstraStartVertex as number,
+      ambientChordLength: candidate.ambientChordLength,
+      edgeDijkstraRouteLength: candidate.edgeDijkstraRouteLength,
+      tracedHeatMethodRouteLength: candidate.tracedHeatMethodRouteLength,
+      tracingReachedSource: candidate.tracingReachedSource,
+      fallbackUsed: candidate.fallbackUsed,
+    };
+  });
+}
+
+export function parseWorldMetadata(
+  value: unknown,
+  data: WorldData,
+): WorldMetadata {
+  if (!isRecord(value)) throw new Error("World metadata is not an object");
+  const diagnostics = value.exportDiagnostics;
+  const gpu = value.gpu;
+  if (
+    value.schema !== "geodesic-world-v1" ||
+    typeof value.title !== "string" ||
+    value.title.length === 0 ||
+    !Number.isInteger(value.deterministicSeed) ||
+    !Number.isInteger(value.subdivisions) ||
+    (value.subdivisions as number) < 1 ||
+    value.vertices !== data.vertexCount ||
+    value.faces !== data.faceCount ||
+    value.sourceVertex !== data.sourceVertex ||
+    !isFiniteNumber(value.meanEdgeLength) ||
+    value.meanEdgeLength <= 0 ||
+    Math.abs(value.meanEdgeLength - data.meanEdgeLength) > 1e-9 ||
+    !isFiniteNumber(value.heatMethodTimeStep) ||
+    value.heatMethodTimeStep <= 0 ||
+    Math.abs(value.heatMethodTimeStep - data.timeStep) > 1e-9 ||
+    typeof value.laplacianSign !== "string" ||
+    typeof value.boundaryCondition !== "string" ||
+    typeof value.heatEncoding !== "string" ||
+    !isFiniteNumber(value.heatResidual) ||
+    value.heatResidual < 0 ||
+    !isFiniteNumber(value.poissonResidual) ||
+    value.poissonResidual < 0 ||
+    !Number.isInteger(value.zeroGradientFaces) ||
+    (value.zeroGradientFaces as number) < 0 ||
+    !isRecord(diagnostics) ||
+    typeof diagnostics.scope !== "string" ||
+    diagnostics.scope.length === 0 ||
+    typeof diagnostics.host !== "string" ||
+    diagnostics.host.length === 0 ||
+    !isFiniteNumber(diagnostics.preprocessingMilliseconds) ||
+    diagnostics.preprocessingMilliseconds < 0 ||
+    !isFiniteNumber(diagnostics.heatSolveMilliseconds) ||
+    diagnostics.heatSolveMilliseconds < 0 ||
+    !isFiniteNumber(diagnostics.poissonSolveMilliseconds) ||
+    diagnostics.poissonSolveMilliseconds < 0 ||
+    !isFiniteNumber(diagnostics.dijkstraMilliseconds) ||
+    diagnostics.dijkstraMilliseconds < 0 ||
+    !isRecord(gpu) ||
+    typeof gpu.available !== "boolean" ||
+    typeof gpu.reason !== "string" ||
+    gpu.reason.length === 0 ||
+    typeof value.reference !== "string" ||
+    value.reference.length === 0
+  ) {
+    throw new Error("World metadata does not match the binary payload");
+  }
+  const routePresets = parseRoutePresets(value.routePresets, data);
+  return { ...(value as unknown as WorldMetadata), routePresets };
+}
 
 function copyTypedArray<
   T extends Float32Array | Uint32Array | Int32Array | Uint16Array,
@@ -272,18 +416,11 @@ export async function loadWorldData(): Promise<{
       `World data request failed (${binaryResponse.status}, ${metadataResponse.status})`,
     );
   }
-  const [buffer, metadata] = await Promise.all([
+  const [buffer, metadataValue] = await Promise.all([
     binaryResponse.arrayBuffer(),
-    metadataResponse.json() as Promise<WorldMetadata>,
+    metadataResponse.json() as Promise<unknown>,
   ]);
   const data = parseWorldBinary(buffer);
-  if (
-    metadata.schema !== "geodesic-world-v1" ||
-    metadata.vertices !== data.vertexCount ||
-    metadata.faces !== data.faceCount ||
-    metadata.sourceVertex !== data.sourceVertex
-  ) {
-    throw new Error("World metadata does not match the binary payload");
-  }
+  const metadata = parseWorldMetadata(metadataValue, data);
   return { data, metadata };
 }
