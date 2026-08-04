@@ -1,12 +1,17 @@
 import { defineConfig } from "@playwright/test";
 
+const runningInCi = Boolean(process.env.CI);
+
 export default defineConfig({
   testDir: "./e2e",
   // WebGL under software rendering can be substantially slower on shared CI
   // runners even when interaction remains correct.
-  timeout: 60_000,
-  expect: { timeout: 8_000 },
+  timeout: runningInCi ? 120_000 : 60_000,
+  expect: { timeout: runningInCi ? 15_000 : 8_000 },
   fullyParallel: true,
+  // Isolate persistent WebGL render loops on the software renderer used by CI.
+  // Local machines still use Playwright's normal worker count.
+  workers: runningInCi ? 1 : undefined,
   forbidOnly: true,
   retries: 0,
   reporter: "list",
