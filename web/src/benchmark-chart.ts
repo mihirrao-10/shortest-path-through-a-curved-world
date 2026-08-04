@@ -1,11 +1,15 @@
 interface BenchmarkCase {
-  subdivisions: number;
+  majorSegments: number;
+  minorSegments: number;
   vertices: number;
   faces: number;
   meshMilliseconds: number;
+  operatorAssemblyMilliseconds: number;
+  factorizationMilliseconds: number;
   preprocessingMilliseconds: number;
-  queryMilliseconds: number;
-  dijkstraMilliseconds: number;
+  oneHeatQueryMilliseconds: number;
+  meanReusedHeatQueryMilliseconds: number;
+  dijkstraQueryMilliseconds: number;
   heatResidual: number;
   poissonResidual: number;
 }
@@ -14,9 +18,9 @@ interface BenchmarkData {
   schema: string;
   clock: string;
   precision: string;
-  repetitions: number;
   warmupQueries: number;
-  gpu: { available: boolean; measured: boolean };
+  reusedSourceCount: number;
+  dijkstraRepetitions: number;
   cases: BenchmarkCase[];
 }
 
@@ -62,7 +66,7 @@ export async function renderBenchmarkChart(
   if (!response.ok)
     throw new Error(`Benchmark request failed (${response.status})`);
   const data = (await response.json()) as BenchmarkData;
-  if (data.schema !== "geodesic-benchmark-v1" || data.cases.length < 2) {
+  if (data.schema !== "geodesic-benchmark-v2" || data.cases.length < 2) {
     throw new Error("Benchmark schema is invalid");
   }
 
@@ -128,12 +132,12 @@ export async function renderBenchmarkChart(
       color: "#4d837b",
     },
     {
-      key: (entry: BenchmarkCase) => entry.queryMilliseconds,
+      key: (entry: BenchmarkCase) => entry.meanReusedHeatQueryMilliseconds,
       className: "chart-line-query",
       color: "#f4b65e",
     },
     {
-      key: (entry: BenchmarkCase) => entry.dijkstraMilliseconds,
+      key: (entry: BenchmarkCase) => entry.dijkstraQueryMilliseconds,
       className: "chart-line-dijkstra",
       color: "#d7a8ff",
     },
@@ -163,8 +167,8 @@ export async function renderBenchmarkChart(
   caption.textContent =
     `Measured locally in double precision: ${largest.faces.toLocaleString()} faces, ` +
     `${largest.preprocessingMilliseconds.toFixed(1)} ms preprocessing, ` +
-    `${largest.queryMilliseconds.toFixed(2)} ms Heat Method query, and ` +
-    `${largest.dijkstraMilliseconds.toFixed(2)} ms edge-Dijkstra query ` +
-    `(mean of ${data.repetitions} runs after ${data.warmupQueries} warm-up). ` +
+    `${largest.meanReusedHeatQueryMilliseconds.toFixed(2)} ms mean reused Heat Method query, and ` +
+    `${largest.dijkstraQueryMilliseconds.toFixed(2)} ms edge-Dijkstra query ` +
+    `(${data.reusedSourceCount} Heat Method sources and ${data.dijkstraRepetitions} Dijkstra runs after ${data.warmupQueries} warm-up). ` +
     "Dijkstra is faster at the largest measured CPU case here; it computes a mesh-edge graph distance, while the Heat Method reconstructs a surface field.";
 }

@@ -1,3 +1,6 @@
+import "@fontsource/stix-two-text/latin-400.css";
+import "@fontsource/stix-two-text/latin-400-italic.css";
+import "@fontsource/stix-two-text/latin-600.css";
 import { renderBenchmarkChart } from "./benchmark-chart";
 import "./style.css";
 import {
@@ -9,7 +12,7 @@ import { WorldScene } from "./world-scene";
 
 const ROUTE_IDS: RoutePresetId[] = [
   "ridge-crossing",
-  "saddle-pass",
+  "inner-saddle-pass",
   "basin-rim",
 ];
 
@@ -94,7 +97,7 @@ function fillComparisonTable(
 }
 
 async function start(): Promise<void> {
-  runNearViewport(document.querySelector("#mathematics"), () => {
+  runNearViewport(document.querySelector("#straight-line"), () => {
     void renderMathematics().catch(() => {
       mathematicsRendered = false;
     });
@@ -144,6 +147,13 @@ async function start(): Promise<void> {
     document.querySelector<HTMLButtonElement>("#compare-routes")!;
   const replayJourney =
     document.querySelector<HTMLButtonElement>("#replay-journey")!;
+  const exploreView =
+    document.querySelector<HTMLButtonElement>("#explore-view")!;
+  const resetView = document.querySelector<HTMLButtonElement>("#reset-view")!;
+  const focusBeacon =
+    document.querySelector<HTMLButtonElement>("#focus-beacon")!;
+  const focusRouteStart =
+    document.querySelector<HTMLButtonElement>("#focus-route-start")!;
   const routeChoice = document.querySelector<HTMLElement>("#route-choice")!;
   const routeDetails = document.querySelector<HTMLElement>("#route-details")!;
   const progressFill = document.querySelector<HTMLElement>("#progress-fill");
@@ -191,6 +201,15 @@ async function start(): Promise<void> {
     worldScene = new WorldScene(canvas, data, metadata, {
       reducedMotion,
       onRouteSelected: updateRouteCopy,
+      onExploreChange: (engaged) => {
+        exploreView.setAttribute("aria-pressed", String(engaged));
+        exploreView.textContent = engaged
+          ? "Exit Explore view"
+          : "Explore view";
+      },
+      onCaptionChange: (nextCaption) => {
+        caption.textContent = nextCaption;
+      },
     });
     updateRouteCopy(worldScene.selectedPreset);
 
@@ -231,6 +250,29 @@ async function start(): Promise<void> {
       const routeId = button.dataset.routeId ?? "";
       if (isRouteId(routeId)) selectRoute(routeId);
     });
+  });
+
+  exploreView.addEventListener("click", () => {
+    worldScene.toggleExplore();
+    caption.textContent = worldScene.exploreEngaged
+      ? "Explore view engaged. Two-finger motion orbits, pinch zooms, and Escape exits."
+      : worldScene.caption;
+  });
+
+  resetView.addEventListener("click", () => {
+    worldScene.resetView();
+    caption.textContent = "The selected route and beacon are framed again.";
+  });
+
+  focusBeacon.addEventListener("click", () => {
+    worldScene.focusBeacon();
+    caption.textContent =
+      "Focused on the amber heat source. Drag to inspect its position.";
+  });
+
+  focusRouteStart.addEventListener("click", () => {
+    worldScene.focusRouteStart();
+    caption.textContent = `Focused on the ${worldScene.selectedPreset.label.toLowerCase()} start.`;
   });
 
   releaseButton.addEventListener("click", () => {

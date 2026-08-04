@@ -1,6 +1,7 @@
 #include "geodesic/io.hpp"
 #include "geodesic/procedural.hpp"
 
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -25,15 +26,36 @@ int intArgument(int argc, char** argv, std::string_view name, int fallback) {
   return value.empty() ? fallback : std::stoi(value);
 }
 
+double doubleArgument(int argc, char** argv, std::string_view name, double fallback) {
+  const std::string value = argumentValue(argc, argv, name);
+  return value.empty() ? fallback : std::stod(value);
+}
+
+geodesic::TorusOptions torusArguments(int argc, char** argv) {
+  geodesic::TorusOptions options;
+  options.majorSegments = intArgument(argc, argv, "--major-segments", options.majorSegments);
+  options.minorSegments = intArgument(argc, argv, "--minor-segments", options.minorSegments);
+  options.majorRadius = doubleArgument(argc, argv, "--major-radius", options.majorRadius);
+  options.minorRadius = doubleArgument(argc, argv, "--minor-radius", options.minorRadius);
+  options.relief = doubleArgument(argc, argv, "--relief", options.relief);
+  const std::string seed = argumentValue(argc, argv, "--seed");
+  if (!seed.empty()) {
+    options.seed = static_cast<std::uint32_t>(std::stoul(seed));
+  }
+  return options;
+}
+
 void usage() {
   std::cout
-      << "GPU-Accelerated Geodesic Solver on Triangle Meshes\n\n"
+      << "Heat Method geodesics on triangle meshes\n\n"
       << "Commands:\n"
-      << "  generate   [--subdivisions 5] --output mesh.obj\n"
+      << "  generate   [torus options] --output mesh.obj\n"
       << "  solve      --mesh mesh.obj [--source 0] [--method heat|dijkstra] --output values.csv\n"
       << "  path       --mesh mesh.obj [--source 0] [--start 1] --output path.obj\n"
-      << "  export-web [--subdivisions 5] --output web/public/data\n"
-      << "  validate-gpu\n";
+      << "  export-web [torus options] --output web/public/data\n\n"
+      << "Torus options:\n"
+      << "  --major-segments 160 --minor-segments 64\n"
+      << "  --major-radius 1.28 --minor-radius 0.46 --relief 0.18 --seed 1592594996\n";
 }
 
 } // namespace
@@ -47,10 +69,10 @@ int main(int argc, char** argv) {
     }
     const std::string command = argv[1];
     if (command == "generate") {
-      const int subdivisions = intArgument(argc, argv, "--subdivisions", 5);
+      const TorusOptions options = torusArguments(argc, argv);
       const std::filesystem::path output =
-          argumentValue(argc, argv, "--output", "curved-world.obj");
-      TriangleMesh mesh = makeCurvedWorld(PlanetOptions{subdivisions});
+          argumentValue(argc, argv, "--output", "curved-torus.obj");
+      TriangleMesh mesh = makeCurvedWorld(options);
       writeObj(mesh, output);
       std::cout << "wrote " << mesh.vertices().size() << " vertices and " << mesh.faces().size()
                 << " faces to " << output << '\n';
@@ -112,7 +134,7 @@ int main(int argc, char** argv) {
                 << path.termination << ")\n";
     } else if (command == "export-web") {
       WebExportOptions options;
-      options.subdivisions = intArgument(argc, argv, "--subdivisions", 5);
+      options.torus = torusArguments(argc, argv);
       const std::filesystem::path output = argumentValue(argc, argv, "--output", "web/public/data");
       const WebExportReport report = exportCurvedWorld(output, options);
       std::cout << "exported " << report.vertexCount << " vertices, " << report.faceCount
@@ -121,14 +143,6 @@ int main(int argc, char** argv) {
                 << " poisson residual=" << report.poissonResidual << '\n'
                 << report.binaryPath << '\n'
                 << report.metadataPath << '\n';
-    } else if (command == "validate-gpu") {
-#ifdef GEODESIC_HAS_CUDA
-      std::cout << "CUDA backend is compiled; use geodesic_benchmark --gpu for agreement checks.\n";
-      return EXIT_SUCCESS;
-#else
-      std::cout << "CUDA backend is unavailable in this CPU-only build.\n";
-      return 2;
-#endif
     } else {
       usage();
       return EXIT_FAILURE;

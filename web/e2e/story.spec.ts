@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 function monitorErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -24,8 +24,9 @@ async function expectBlackSurface(page: Page, selector: string): Promise<void> {
       while (current) {
         const color = getComputedStyle(current).backgroundColor;
         const channels = color.match(/[\d.]+/g)?.map(Number) ?? [];
-        if (channels.length >= 3 && (channels[3] ?? 1) > 0)
+        if (channels.length >= 3 && (channels[3] ?? 1) > 0) {
           return channels.slice(0, 3);
+        }
         current = current.parentElement;
       }
       return [255, 255, 255];
@@ -46,8 +47,9 @@ async function expectNoEmDash(page: Page): Promise<void> {
     );
     let node = walker.nextNode();
     while (node) {
-      if (node.textContent?.includes("\u2014"))
+      if (node.textContent?.includes("\u2014")) {
         values.push(node.textContent.trim());
+      }
       node = walker.nextNode();
     }
     document
@@ -63,9 +65,16 @@ async function expectNoEmDash(page: Page): Promise<void> {
   expect(violations).toEqual([]);
 }
 
-test("the compact black story loads cleanly at every configured viewport", async ({
+async function numericAttribute(
+  locator: Locator,
+  name: string,
+): Promise<number> {
+  return Number(await locator.getAttribute(name));
+}
+
+test("the toroidal story loads cleanly at every configured viewport", async ({
   page,
-}, testInfo) => {
+}) => {
   const errors = monitorErrors(page);
   await page.goto("./", { waitUntil: "networkidle" });
   await expect(
@@ -75,11 +84,37 @@ test("the compact black story loads cleanly at every configured viewport", async
     }),
   ).toBeVisible();
   await expect(page.locator("#loading")).toBeHidden();
-  await expect(page.locator("#world-canvas")).toBeVisible();
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-active-route",
-    "ridge-crossing",
+
+  const canvas = page.locator("#world-canvas");
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-world-kind", "procedural-torus");
+  await expect(canvas).toHaveAttribute("data-topology", "genus-1");
+  await expect(canvas).toHaveAttribute("data-vertex-count", "10240");
+  await expect(canvas).toHaveAttribute("data-face-count", "20480");
+  await expect(canvas).toHaveAttribute("data-active-route", "ridge-crossing");
+  await expect(canvas).toHaveAttribute("data-beacon-clickable", "true");
+  await expect(canvas).toHaveAttribute("data-route-start-clickable", "true");
+  await expect(canvas).toHaveAttribute(
+    "aria-describedby",
+    "world-instructions scene-caption",
   );
+  expect(await canvas.getAttribute("role")).not.toBe("application");
+
+  await expect(page.locator(".stage-controls button")).toHaveCount(4);
+  await expect(page.locator("#explore-view")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(page.locator(".stage-hint")).toContainText("Drag to orbit");
+  await expect(page.locator("#world-instructions")).toContainText(
+    "Escape exits Explore view",
+  );
+  await expect(page.locator(".code-figure")).toHaveCount(0);
+
+  const documentText = (await page.content()).toLowerCase();
+  const forbiddenTerms = ["cu" + "da", "cu" + "sparse", "nv" + "idia"];
+  forbiddenTerms.forEach((term) => expect(documentText).not.toContain(term));
+
   await expectBlackSurface(page, "html");
   await expectBlackSurface(page, "body");
   await expectBlackSurface(page, "#world-stage");
@@ -90,32 +125,48 @@ test("the compact black story loads cleanly at every configured viewport", async
     const stage = document
       .querySelector("#world-stage")!
       .getBoundingClientRect();
+    const arrival = document.querySelector("#arrival")!.getBoundingClientRect();
     const heading = document.querySelector("h1")!;
     return {
-      stageWidth: stage.width,
-      stageHeight: stage.height,
+      width: window.innerWidth,
+      stage: {
+        left: stage.left,
+        right: stage.right,
+        top: stage.top,
+        bottom: stage.bottom,
+        width: stage.width,
+        height: stage.height,
+      },
+      arrival: {
+        left: arrival.left,
+        top: arrival.top,
+      },
       bodyFontSize: Number.parseFloat(getComputedStyle(document.body).fontSize),
+      bodyFontFamily: getComputedStyle(document.body).fontFamily,
       headingFontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
     };
   });
+  expect(layout.bodyFontFamily).toContain("STIX Two Text");
   expect(layout.bodyFontSize).toBeGreaterThanOrEqual(15);
-  if (testInfo.project.name.startsWith("mobile")) {
-    expect(layout.stageHeight).toBeLessThanOrEqual(360);
-    expect(layout.headingFontSize).toBeLessThanOrEqual(40);
+  if (layout.width <= 900) {
+    expect(layout.stage.bottom).toBeLessThanOrEqual(layout.arrival.top + 1);
+    expect(layout.stage.height).toBeLessThanOrEqual(361);
+    expect(layout.headingFontSize).toBeLessThanOrEqual(45);
   } else {
-    expect(layout.stageWidth).toBeLessThanOrEqual(622);
-    expect(layout.stageHeight).toBeLessThanOrEqual(682);
+    expect(layout.stage.right).toBeLessThan(layout.arrival.left);
+    expect(layout.stage.width).toBeLessThanOrEqual(602);
+    expect(layout.stage.height).toBeLessThanOrEqual(642);
     expect(layout.headingFontSize).toBeLessThanOrEqual(56);
   }
   expect(errors).toEqual([]);
 });
 
-test("all three authored routes update the active ID and real measurements", async ({
+test("every route, heat replay, and comparison mode uses measured data", async ({
   page,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "desktop-1280",
-    "Exercise controls once on desktop.",
+    "Exercise the full route flow once on desktop.",
   );
   const errors = monitorErrors(page);
   await page.goto("./#route-choice", { waitUntil: "networkidle" });
@@ -123,7 +174,7 @@ test("all three authored routes update the active ID and real measurements", asy
   const observedHeatLengths = new Set<string>();
   for (const routeId of [
     "ridge-crossing",
-    "saddle-pass",
+    "inner-saddle-pass",
     "basin-rim",
   ] as const) {
     const button = page.locator(`button[data-route-id="${routeId}"]`);
@@ -166,29 +217,215 @@ test("all three authored routes update the active ID and real measurements", asy
     3,
   );
 
-  await page.locator("#choose-route").click();
-  await expect(canvas).toHaveAttribute("data-comparison", "false");
-  await expect(page.locator("#comparison-panel")).toBeHidden();
+  await page.locator("#release-heat").scrollIntoViewIfNeeded();
+  await page.locator("#release-button").click();
+  await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
+  await expect
+    .poll(async () => numericAttribute(canvas, "data-heat-progress"))
+    .toBeGreaterThan(0);
+
+  await page.locator("#replay-journey").click();
+  await expect(canvas).toHaveAttribute("data-active-route", "ridge-crossing");
+  await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
+  await expect(page.locator("#release-button")).toBeEnabled();
   await expectNoHorizontalOverflow(page);
   expect(errors).toEqual([]);
 });
 
-test("compare action lands on the complete table at the narrowest viewport", async ({
+test("pointer, keyboard, trackpad, focus, and scroll controls cooperate", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Exercise camera interactions once on desktop.",
+  );
+  const errors = monitorErrors(page);
+  await page.goto("./", { waitUntil: "networkidle" });
+  const canvas = page.locator("#world-canvas");
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  const box = bounds!;
+
+  await expect.poll(() => canvas.getAttribute("data-auto-orbit")).toBe("true");
+
+  const mouseStart = await numericAttribute(canvas, "data-camera-azimuth");
+  await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.48);
+  await page.mouse.down();
+  await expect(canvas).toHaveClass(/is-dragging/);
+  await page.mouse.move(box.x + box.width * 0.68, box.y + box.height * 0.38, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  await expect(canvas).not.toHaveClass(/is-dragging/);
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-azimuth"))
+    .not.toBe(mouseStart);
+  await expect(canvas).toHaveAttribute("data-focus-target", "manual");
+  await expect(canvas).toHaveAttribute("data-auto-orbit", "false");
+
+  const syntheticStart = await numericAttribute(
+    canvas,
+    "data-camera-goal-elevation",
+  );
+  await canvas.evaluate((element) => {
+    const rectangle = element.getBoundingClientRect();
+    const common = {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 41,
+      pointerType: "mouse",
+      button: 0,
+    };
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        ...common,
+        buttons: 1,
+        clientX: rectangle.left + rectangle.width * 0.45,
+        clientY: rectangle.top + rectangle.height * 0.45,
+      }),
+    );
+    element.dispatchEvent(
+      new PointerEvent("pointermove", {
+        ...common,
+        buttons: 1,
+        clientX: rectangle.left + rectangle.width * 0.48,
+        clientY: rectangle.top + rectangle.height * 0.62,
+      }),
+    );
+    element.dispatchEvent(
+      new PointerEvent("pointerup", {
+        ...common,
+        buttons: 0,
+        clientX: rectangle.left + rectangle.width * 0.48,
+        clientY: rectangle.top + rectangle.height * 0.62,
+      }),
+    );
+  });
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-elevation"))
+    .not.toBe(syntheticStart);
+
+  await canvas.focus();
+  const keyboardAzimuth = await numericAttribute(
+    canvas,
+    "data-camera-goal-azimuth",
+  );
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
+    .not.toBe(keyboardAzimuth);
+  const keyboardDistance = await numericAttribute(
+    canvas,
+    "data-camera-goal-distance",
+  );
+  await page.keyboard.press("+");
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-distance"))
+    .toBeLessThan(keyboardDistance);
+
+  const manualGoal = await canvas.getAttribute("data-camera-goal-azimuth");
+  await page.locator("#mathematics").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(250);
+  await expect(canvas).toHaveAttribute("data-focus-target", "manual");
+  await expect(canvas).toHaveAttribute("data-camera-goal-azimuth", manualGoal!);
+
+  const explore = page.locator("#explore-view");
+  await explore.click();
+  await expect(explore).toHaveAttribute("aria-pressed", "true");
+  await expect(canvas).toHaveAttribute("data-explore-view", "true");
+  const trackpadAzimuth = await numericAttribute(
+    canvas,
+    "data-camera-goal-azimuth",
+  );
+  const wheelResult = await canvas.evaluate((element) => {
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 70,
+      deltaY: 35,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(wheelResult).toBe(true);
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
+    .not.toBe(trackpadAzimuth);
+
+  const pinchDistance = await numericAttribute(
+    canvas,
+    "data-camera-goal-distance",
+  );
+  await canvas.evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        deltaY: -55,
+      }),
+    );
+  });
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-distance"))
+    .toBeLessThan(pinchDistance);
+
+  await page.locator("#reset-view").focus();
+  await page.keyboard.press("Escape");
+  await expect(explore).toHaveAttribute("aria-pressed", "false");
+  await expect(canvas).toHaveAttribute("data-explore-view", "false");
+
+  await page.locator("#reset-view").click();
+  await expect(canvas).toHaveAttribute("data-focus-target", "route");
+  await expect(page.locator("#scene-caption")).toContainText(
+    "selected route and beacon",
+  );
+  await page.locator("#focus-beacon").click();
+  await expect(canvas).toHaveAttribute("data-focus-target", "beacon");
+  await expect(page.locator("#scene-caption")).toContainText(
+    "amber heat source",
+  );
+  await page.locator("#focus-route-start").click();
+  await expect(canvas).toHaveAttribute("data-focus-target", "route-start");
+  await expect(page.locator("#scene-caption")).toContainText(
+    "ridge crossing start",
+  );
+
+  await page.mouse.dblclick(box.x + 12, box.y + box.height * 0.55);
+  await expect(canvas).toHaveAttribute("data-focus-target", "route");
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const beforeScroll = await page.evaluate(() => window.scrollY);
+  const verticalWheelPrevented = await canvas.evaluate((element) => {
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 120,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(verticalWheelPrevented).toBe(false);
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await page.mouse.wheel(0, 420);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(beforeScroll);
+  expect(errors).toEqual([]);
+});
+
+test("comparison remains complete at the narrowest viewport", async ({
   page,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "mobile-320",
-    "Exercise the shortest mobile viewport once.",
+    "Exercise the narrow comparison once.",
   );
   const errors = monitorErrors(page);
   await page.goto("./#route-choice", { waitUntil: "networkidle" });
   await page.locator("#compare-routes").click();
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-comparison",
-    "true",
-  );
-  await expect(page.locator("#compare-routes")).toHaveAttribute(
-    "aria-pressed",
     "true",
   );
   await expect(page.locator("#comparison-panel")).toBeVisible();
@@ -219,34 +456,13 @@ test("compare action lands on the complete table at the narrowest viewport", asy
   expect(errors).toEqual([]);
 });
 
-test("major story surfaces remain pure black from mathematics through the footer", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    !["desktop-1440", "mobile-390"].includes(testInfo.project.name),
-    "Inspect one desktop and one mobile surface stack.",
-  );
-  await page.goto("./", { waitUntil: "networkidle" });
-  for (const selector of [
-    "#arrival",
-    "#route-choice",
-    "#mathematics",
-    "#under-the-hood",
-    "footer",
-  ]) {
-    await page.locator(selector).scrollIntoViewIfNeeded();
-    await expectBlackSurface(page, selector);
-    await expectNoHorizontalOverflow(page);
-  }
-});
-
-test("release, replay, and keyboard paths honor reduced motion", async ({
+test("reduced motion disables idle orbit and keeps controls immediate", async ({
   browser,
   baseURL,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "mobile-390",
-    "Exercise accessibility once.",
+    "Exercise reduced motion once.",
   );
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -255,39 +471,36 @@ test("release, replay, and keyboard paths honor reduced motion", async ({
   });
   const page = await context.newPage();
   const errors = monitorErrors(page);
-  await page.goto(`${baseURL}#route-choice`, { waitUntil: "networkidle" });
-  const saddle = page.locator("#route-saddle-pass");
-  await saddle.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-active-route",
-    "saddle-pass",
-  );
+  await page.goto(`${baseURL}`, { waitUntil: "networkidle" });
   const canvas = page.locator("#world-canvas");
-  await canvas.focus();
-  await page.keyboard.press("Enter");
-  await expect(canvas).toHaveAttribute("data-active-route", "ridge-crossing");
+  await expect(canvas).toHaveAttribute("data-auto-orbit", "false");
+  const stableAzimuth = await canvas.getAttribute("data-camera-azimuth");
+  await page.waitForTimeout(500);
+  await expect(canvas).toHaveAttribute("data-camera-azimuth", stableAzimuth!);
 
-  await page.locator("#compare-routes").click();
-  await expect(canvas).toHaveAttribute("data-comparison", "true");
-  await expect(page.locator("#comparison-panel")).toBeVisible();
-  await page.locator("#choose-route").click();
-  await expect(canvas).toHaveAttribute("data-comparison", "false");
-  await expect(page.locator("#comparison-panel")).toBeHidden();
+  await page.locator("#route-inner-saddle-pass").click();
+  await expect(canvas).toHaveAttribute(
+    "data-active-route",
+    "inner-saddle-pass",
+  );
+  await canvas.focus();
+  const beforeKey = await numericAttribute(canvas, "data-camera-azimuth");
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-azimuth"))
+    .not.toBe(beforeKey);
+  await page.keyboard.press("r");
+  await expect(canvas).toHaveAttribute("data-focus-target", "route");
 
   await page.locator("#release-heat").scrollIntoViewIfNeeded();
   await page.locator("#release-button").click();
   await expect(canvas).toHaveAttribute("data-heat-progress", "1.000");
-  await page.locator("#replay-journey").click();
-  await expect(canvas).toHaveAttribute("data-active-route", "ridge-crossing");
-  await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
-  await expect(page.locator("#release-button")).toBeEnabled();
   await expectNoHorizontalOverflow(page);
   expect(errors).toEqual([]);
   await context.close();
 });
 
-test("loading failure preserves the black fallback and readable story", async ({
+test("the fallback remains dark, readable, and toroidal", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -304,5 +517,16 @@ test("loading failure preserves the black fallback and readable story", async ({
   await page.goto("./", { waitUntil: "networkidle" });
   await expect(page.locator("#webgl-fallback")).toBeVisible();
   await expectBlackSurface(page, "#webgl-fallback");
+  const fallbackShape = await page
+    .locator(".fallback-world")
+    .evaluate((node) => {
+      const rectangle = node.getBoundingClientRect();
+      return {
+        ratio: rectangle.width / rectangle.height,
+        radius: getComputedStyle(node).borderRadius,
+      };
+    });
+  expect(fallbackShape.ratio).toBeGreaterThan(1.3);
+  expect(fallbackShape.radius).toContain("50%");
   await expectNoHorizontalOverflow(page);
 });

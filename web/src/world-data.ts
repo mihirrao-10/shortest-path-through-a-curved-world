@@ -2,10 +2,26 @@ export interface WorldMetadata {
   schema: string;
   title: string;
   deterministicSeed: number;
-  subdivisions: number;
+  mesh: {
+    kind: "procedural-torus";
+    majorSegments: number;
+    minorSegments: number;
+    majorRadius: number;
+    minorRadius: number;
+    relief: number;
+  };
   vertices: number;
   faces: number;
   sourceVertex: number;
+  source: { vertex: number; u: number; v: number; label: string };
+  topology: {
+    closed: true;
+    orientedManifold: true;
+    boundaryEdges: 0;
+    eulerCharacteristic: 0;
+    genus: 1;
+  };
+  quality: { minimumAngleDegrees: number; maximumAspectRatio: number };
   meanEdgeLength: number;
   heatMethodTimeStep: number;
   laplacianSign: string;
@@ -15,19 +31,18 @@ export interface WorldMetadata {
   poissonResidual: number;
   zeroGradientFaces: number;
   routePresets: RoutePreset[];
-  exportDiagnostics: {
-    scope: string;
-    host: string;
-    preprocessingMilliseconds: number;
-    heatSolveMilliseconds: number;
-    poissonSolveMilliseconds: number;
-    dijkstraMilliseconds: number;
+  solver: {
+    language: string;
+    library: string;
+    precision: string;
+    direct: string;
+    iterative: string;
   };
-  gpu: { available: boolean; reason: string };
   reference: string;
 }
 
-export type RoutePresetId = "ridge-crossing" | "saddle-pass" | "basin-rim";
+export type RoutePresetId =
+  "ridge-crossing" | "inner-saddle-pass" | "basin-rim";
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -72,8 +87,8 @@ export interface WorldData {
   vertexNeighbors: number[][];
 }
 
-const MAGIC = "GEOWRLD1";
-const ROUTE_IDS = ["ridge-crossing", "saddle-pass", "basin-rim"] as const;
+const MAGIC = "GEOWRLD2";
+const ROUTE_IDS = ["ridge-crossing", "inner-saddle-pass", "basin-rim"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -145,18 +160,56 @@ export function parseWorldMetadata(
   data: WorldData,
 ): WorldMetadata {
   if (!isRecord(value)) throw new Error("World metadata is not an object");
-  const diagnostics = value.exportDiagnostics;
-  const gpu = value.gpu;
+  const mesh = value.mesh;
+  const source = value.source;
+  const topology = value.topology;
+  const quality = value.quality;
+  const solver = value.solver;
   if (
-    value.schema !== "geodesic-world-v1" ||
+    value.schema !== "geodesic-world-v2" ||
     typeof value.title !== "string" ||
     value.title.length === 0 ||
     !Number.isInteger(value.deterministicSeed) ||
-    !Number.isInteger(value.subdivisions) ||
-    (value.subdivisions as number) < 1 ||
+    !isRecord(mesh) ||
+    mesh.kind !== "procedural-torus" ||
+    !Number.isInteger(mesh.majorSegments) ||
+    (mesh.majorSegments as number) < 12 ||
+    !Number.isInteger(mesh.minorSegments) ||
+    (mesh.minorSegments as number) < 8 ||
+    (mesh.majorSegments as number) * (mesh.minorSegments as number) !==
+      data.vertexCount ||
+    2 * (mesh.majorSegments as number) * (mesh.minorSegments as number) !==
+      data.faceCount ||
+    !isFiniteNumber(mesh.majorRadius) ||
+    mesh.majorRadius <= 0 ||
+    !isFiniteNumber(mesh.minorRadius) ||
+    mesh.minorRadius <= 0 ||
+    !isFiniteNumber(mesh.relief) ||
+    mesh.relief < 0 ||
     value.vertices !== data.vertexCount ||
     value.faces !== data.faceCount ||
     value.sourceVertex !== data.sourceVertex ||
+    !isRecord(source) ||
+    source.vertex !== data.sourceVertex ||
+    !isFiniteNumber(source.u) ||
+    source.u < 0 ||
+    source.u >= 2 * Math.PI ||
+    !isFiniteNumber(source.v) ||
+    source.v < 0 ||
+    source.v >= 2 * Math.PI ||
+    typeof source.label !== "string" ||
+    source.label.length === 0 ||
+    !isRecord(topology) ||
+    topology.closed !== true ||
+    topology.orientedManifold !== true ||
+    topology.boundaryEdges !== 0 ||
+    topology.eulerCharacteristic !== 0 ||
+    topology.genus !== 1 ||
+    !isRecord(quality) ||
+    !isFiniteNumber(quality.minimumAngleDegrees) ||
+    quality.minimumAngleDegrees <= 0 ||
+    !isFiniteNumber(quality.maximumAspectRatio) ||
+    quality.maximumAspectRatio <= 0 ||
     !isFiniteNumber(value.meanEdgeLength) ||
     value.meanEdgeLength <= 0 ||
     Math.abs(value.meanEdgeLength - data.meanEdgeLength) > 1e-9 ||
@@ -172,29 +225,27 @@ export function parseWorldMetadata(
     value.poissonResidual < 0 ||
     !Number.isInteger(value.zeroGradientFaces) ||
     (value.zeroGradientFaces as number) < 0 ||
-    !isRecord(diagnostics) ||
-    typeof diagnostics.scope !== "string" ||
-    diagnostics.scope.length === 0 ||
-    typeof diagnostics.host !== "string" ||
-    diagnostics.host.length === 0 ||
-    !isFiniteNumber(diagnostics.preprocessingMilliseconds) ||
-    diagnostics.preprocessingMilliseconds < 0 ||
-    !isFiniteNumber(diagnostics.heatSolveMilliseconds) ||
-    diagnostics.heatSolveMilliseconds < 0 ||
-    !isFiniteNumber(diagnostics.poissonSolveMilliseconds) ||
-    diagnostics.poissonSolveMilliseconds < 0 ||
-    !isFiniteNumber(diagnostics.dijkstraMilliseconds) ||
-    diagnostics.dijkstraMilliseconds < 0 ||
-    !isRecord(gpu) ||
-    typeof gpu.available !== "boolean" ||
-    typeof gpu.reason !== "string" ||
-    gpu.reason.length === 0 ||
+    !isRecord(solver) ||
+    typeof solver.language !== "string" ||
+    typeof solver.library !== "string" ||
+    typeof solver.precision !== "string" ||
+    typeof solver.direct !== "string" ||
+    typeof solver.iterative !== "string" ||
     typeof value.reference !== "string" ||
     value.reference.length === 0
   ) {
     throw new Error("World metadata does not match the binary payload");
   }
   const routePresets = parseRoutePresets(value.routePresets, data);
+  if (
+    new Set(routePresets.map((route) => route.startFace)).size !==
+      routePresets.length ||
+    new Set(
+      routePresets.map((route) => route.tracedHeatMethodRouteLength.toFixed(3)),
+    ).size !== routePresets.length
+  ) {
+    throw new Error("World route presets are not geometrically distinct");
+  }
   return { ...(value as unknown as WorldMetadata), routePresets };
 }
 
@@ -253,12 +304,16 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
   const heatFrameCount = readUint32();
   const gradientSampleCount = readUint32();
   const sourceVertex = readUint32();
-  readUint32(); // Reserved.
+  const reserved = readUint32();
   if (
-    version !== 1 ||
+    version !== 2 ||
     vertexCount === 0 ||
     faceCount === 0 ||
-    heatFrameCount === 0
+    heatFrameCount === 0 ||
+    vertexCount > 10_000_000 ||
+    faceCount > 20_000_000 ||
+    sourceVertex >= vertexCount ||
+    reserved !== 0
   ) {
     throw new Error("World binary header is invalid or unsupported");
   }
@@ -273,6 +328,18 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     frameLogMin[frame] = readFloat64();
   for (let frame = 0; frame < heatFrameCount; frame += 1)
     frameLogMax[frame] = readFloat64();
+  for (let frame = 0; frame < heatFrameCount; frame += 1) {
+    if (
+      !Number.isFinite(frameTimes[frame]) ||
+      frameTimes[frame]! <= 0 ||
+      (frame > 0 && frameTimes[frame]! <= frameTimes[frame - 1]!) ||
+      !Number.isFinite(frameLogMin[frame]) ||
+      !Number.isFinite(frameLogMax[frame]) ||
+      frameLogMax[frame]! < frameLogMin[frame]!
+    ) {
+      throw new Error("World heat frame metadata is invalid");
+    }
+  }
 
   const positionsResult = copyTypedArray(
     buffer,
@@ -360,6 +427,58 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     throw new Error(
       `World binary length mismatch: parsed ${offset}, received ${buffer.byteLength}`,
     );
+  }
+
+  if (
+    !Number.isFinite(meanEdgeLength) ||
+    meanEdgeLength <= 0 ||
+    !Number.isFinite(timeStep) ||
+    timeStep <= 0
+  ) {
+    throw new Error("World scale metadata is invalid");
+  }
+  for (let component = 0; component < positions.length; component += 1) {
+    if (
+      !Number.isFinite(positions[component]) ||
+      !Number.isFinite(normals[component])
+    ) {
+      throw new Error("World geometry contains a non-finite component");
+    }
+  }
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    if (
+      !Number.isFinite(distance[vertex]) ||
+      distance[vertex]! < -1e-5 ||
+      !Number.isFinite(dijkstraDistance[vertex]) ||
+      dijkstraDistance[vertex]! < 0 ||
+      (dijkstraPredecessor[vertex] !== 0xffffffff &&
+        dijkstraPredecessor[vertex]! >= vertexCount)
+    ) {
+      throw new Error("World distance or predecessor data is invalid");
+    }
+  }
+  if (Math.abs(distance[sourceVertex]!) > 1e-4) {
+    throw new Error("World source distance is not zero");
+  }
+  for (let corner = 0; corner < indices.length; corner += 1) {
+    if (indices[corner]! >= vertexCount) {
+      throw new Error("World triangle index is out of range");
+    }
+  }
+  for (let corner = 0; corner < faceAdjacency.length; corner += 1) {
+    const adjacent = faceAdjacency[corner]!;
+    if (adjacent < -1 || adjacent >= faceCount) {
+      throw new Error("World face adjacency is out of range");
+    }
+  }
+  for (const sample of gradientSamples) {
+    if (
+      sample.face >= faceCount ||
+      !sample.position.every(Number.isFinite) ||
+      !sample.direction.every(Number.isFinite)
+    ) {
+      throw new Error("World gradient sample is invalid");
+    }
   }
 
   const neighborSets = Array.from(

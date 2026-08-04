@@ -20,13 +20,17 @@ function loadWorld() {
 }
 
 function loadMetadata(world: ReturnType<typeof loadWorld>) {
-  const value = JSON.parse(
+  const value = loadRawMetadata();
+  return parseWorldMetadata(value, world);
+}
+
+function loadRawMetadata(): unknown {
+  return JSON.parse(
     readFileSync(
       new URL("../public/data/world.meta.json", import.meta.url),
       "utf8",
     ),
   ) as unknown;
-  return parseWorldMetadata(value, world);
 }
 
 function routeStart(world: ReturnType<typeof loadWorld>, preset: RoutePreset) {
@@ -54,8 +58,8 @@ function polylineLength(points: readonly THREE.Vector3[]) {
 describe("engine world export", () => {
   it("parses all binary sections deterministically", () => {
     const world = loadWorld();
-    expect(world.version).toBe(1);
-    expect(world.vertexCount).toBe(10_242);
+    expect(world.version).toBe(2);
+    expect(world.vertexCount).toBe(10_240);
     expect(world.faceCount).toBe(20_480);
     expect(world.heatFrames).toHaveLength(6);
     expect(world.positions).toHaveLength(world.vertexCount * 3);
@@ -65,10 +69,40 @@ describe("engine world export", () => {
     expect(Math.max(...world.distance)).toBeGreaterThan(2);
   });
 
-  it("contains the deterministic closed asymmetric world", () => {
+  it("rejects stale or semantically inconsistent schema data", () => {
     const world = loadWorld();
+    const stale = structuredClone(loadRawMetadata()) as Record<string, unknown>;
+    stale.schema = "geodesic-world-v1";
+    expect(() => parseWorldMetadata(stale, world)).toThrow();
+
+    const wrongTopology = structuredClone(loadRawMetadata()) as {
+      topology: { genus: number };
+    };
+    wrongTopology.topology.genus = 0;
+    expect(() => parseWorldMetadata(wrongTopology, world)).toThrow();
+
+    const wrongCounts = structuredClone(loadRawMetadata()) as {
+      mesh: { majorSegments: number };
+    };
+    wrongCounts.mesh.majorSegments -= 1;
+    expect(() => parseWorldMetadata(wrongCounts, world)).toThrow();
+
+    const bytes = readFileSync(
+      new URL("../public/data/world.bin", import.meta.url),
+    );
+    const invalidHeader = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+    new DataView(invalidHeader).setUint32(32, 1, true);
+    expect(() => parseWorldBinary(invalidHeader)).toThrow();
+  });
+
+  it("contains the deterministic closed asymmetric torus", () => {
+    const world = loadWorld();
+    const metadata = loadMetadata(world);
     expect([...world.faceAdjacency].every((face) => face >= 0)).toBe(true);
-    const radii: number[] = [];
+    const radialDistances: number[] = [];
     const minimum = new THREE.Vector3(
       Number.POSITIVE_INFINITY,
       Number.POSITIVE_INFINITY,
@@ -81,13 +115,29 @@ describe("engine world export", () => {
     );
     for (let vertex = 0; vertex < world.vertexCount; vertex += 1) {
       const point = new THREE.Vector3().fromArray(world.positions, 3 * vertex);
-      radii.push(point.length());
+      radialDistances.push(Math.hypot(point.x, point.y));
       minimum.min(point);
       maximum.max(point);
     }
-    expect(Math.max(...radii) / Math.min(...radii)).toBeGreaterThan(1.7);
+    expect(Math.min(...radialDistances)).toBeGreaterThan(0.7);
+    expect(Math.max(...radialDistances)).toBeGreaterThan(1.7);
     const extents = maximum.sub(minimum).toArray();
-    expect(Math.max(...extents) / Math.min(...extents)).toBeGreaterThan(1.35);
+    expect(extents[0]).toBeGreaterThan(3.3);
+    expect(extents[1]).toBeGreaterThan(3.3);
+    expect(extents[2]).toBeGreaterThan(0.9);
+    expect(metadata.mesh.kind).toBe("procedural-torus");
+    expect(metadata.mesh.majorSegments * metadata.mesh.minorSegments).toBe(
+      world.vertexCount,
+    );
+    expect(metadata.topology).toMatchObject({
+      closed: true,
+      orientedManifold: true,
+      boundaryEdges: 0,
+      eulerCharacteristic: 0,
+      genus: 1,
+    });
+    expect(metadata.quality.minimumAngleDegrees).toBeGreaterThan(20);
+    expect(metadata.quality.maximumAspectRatio).toBeLessThan(3);
   });
 
   it("validates three real barycentric route presets against the shared fields", () => {
@@ -95,7 +145,7 @@ describe("engine world export", () => {
     const metadata = loadMetadata(world);
     expect(metadata.routePresets.map((preset) => preset.id)).toEqual([
       "ridge-crossing",
-      "saddle-pass",
+      "inner-saddle-pass",
       "basin-rim",
     ]);
     expect(
@@ -154,15 +204,14 @@ describe("engine world export", () => {
     }
     for (let first = 0; first < starts.length; first += 1) {
       for (let second = first + 1; second < starts.length; second += 1) {
-        expect(starts[first]!.distanceTo(starts[second]!)).toBeGreaterThan(0.4);
+        expect(starts[first]!.distanceTo(starts[second]!)).toBeGreaterThan(0.7);
         expect(
           Math.abs(tracedLengths[first]! - tracedLengths[second]!),
-        ).toBeGreaterThan(0.01);
+        ).toBeGreaterThan(0.04);
       }
     }
-    expect(metadata.exportDiagnostics.scope).toContain(
-      "not canonical benchmark",
-    );
+    expect(metadata.solver.language).toBe("C++20");
+    expect(metadata.solver.library).toContain("Eigen");
   });
 
   it("traces the exported field from a far face to the source", () => {

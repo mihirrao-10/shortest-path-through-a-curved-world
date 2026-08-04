@@ -3,6 +3,7 @@
 #include "geodesic/dijkstra.hpp"
 #include "geodesic/heat_method.hpp"
 #include "geodesic/path.hpp"
+#include "geodesic/procedural.hpp"
 
 #include <filesystem>
 #include <string>
@@ -18,7 +19,7 @@ void writeScalarCsv(const Vector& values, const std::filesystem::path& path,
 void writePathObj(const std::vector<Vec3>& points, const std::filesystem::path& path);
 
 struct WebExportOptions {
-  int subdivisions{5};
+  TorusOptions torus{};
   Index sourceVertex{kInvalidIndex};
   std::vector<double> heatTimeMultipliers{0.25, 1.0, 4.0, 16.0, 64.0, 256.0};
 };
@@ -38,11 +39,10 @@ struct WebRoutePreset {
   std::vector<Index> edgeVertices;
 };
 
-std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mesh,
-                                                         const HeatMethodSolver& solver,
-                                                         const HeatMethodResult& heat,
-                                                         const DijkstraResult& dijkstra,
-                                                         Index sourceVertex);
+std::vector<WebRoutePreset>
+buildCurvedWorldRoutePresets(const TriangleMesh& mesh, const HeatMethodSolver& solver,
+                             const HeatMethodResult& heat, const DijkstraResult& dijkstra,
+                             Index sourceVertex, const TorusOptions& options = {});
 
 struct WebExportReport {
   std::filesystem::path binaryPath;

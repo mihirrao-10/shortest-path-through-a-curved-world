@@ -1,71 +1,27 @@
 {
-  "schema": "geodesic-world-v1",
+  "schema": "geodesic-world-v2",
   "title": "The Shortest Path Through a Curved World",
   "deterministicSeed": 1592594996,
-  "subdivisions": 5,
-  "vertices": 10242,
+  "mesh": {"kind": "procedural-torus", "majorSegments": 160, "minorSegments": 64, "majorRadius": 1.28, "minorRadius": 0.46, "relief": 0.18},
+  "vertices": 10240,
   "faces": 20480,
-  "sourceVertex": 8014,
-  "meanEdgeLength": 0.0401499792133,
-  "heatMethodTimeStep": 0.00161202083083,
+  "sourceVertex": 9209,
+  "source": {"vertex": 9209, "u": 5.63, "v": 5.58, "label": "Heat source"},
+  "topology": {"closed": true, "orientedManifold": true, "boundaryEdges": 0, "eulerCharacteristic": 0, "genus": 1},
+  "quality": {"minimumAngleDegrees": 29.022913263, "maximumAspectRatio": 2.44830869118},
+  "meanEdgeLength": 0.0541897159451,
+  "heatMethodTimeStep": 0.00293652531421,
   "laplacianSign": "positive-semidefinite stiffness matrix approximating -Delta",
   "boundaryCondition": "natural Neumann; primary world is closed",
   "heatEncoding": "per-frame log(u), linearly quantized to uint16",
-  "heatResidual": 2.60904396562e-16,
-  "poissonResidual": 2.94192360586e-13,
+  "heatResidual": 2.17734325945e-16,
+  "poissonResidual": 2.14194985406e-13,
   "zeroGradientFaces": 0,
   "routePresets": [
-    {
-      "id": "ridge-crossing",
-      "label": "Ridge crossing",
-      "description": "Cross the raised folded ridge from the high northern lobe.",
-      "startFace": 1361,
-      "startBarycentric": [0.24, 0.33, 0.43],
-      "dijkstraStartVertex": 786,
-      "ambientChordLength": 1.80082760466,
-      "edgeDijkstraRouteLength": 2.65057174144,
-      "tracedHeatMethodRouteLength": 2.52061670049,
-      "tracingReachedSource": true,
-      "fallbackUsed": false
-    },
-    {
-      "id": "saddle-pass",
-      "label": "Saddle pass",
-      "description": "Enter through the low saddle where two slopes trade height.",
-      "startFace": 11936,
-      "startBarycentric": [0.41, 0.22, 0.37],
-      "dijkstraStartVertex": 7170,
-      "ambientChordLength": 1.42815974503,
-      "edgeDijkstraRouteLength": 1.61170883217,
-      "tracedHeatMethodRouteLength": 1.50765892425,
-      "tracingReachedSource": true,
-      "fallbackUsed": false
-    },
-    {
-      "id": "basin-rim",
-      "label": "Basin rim",
-      "description": "Trace the long rim of the deep asymmetric basin.",
-      "startFace": 866,
-      "startBarycentric": [0.29, 0.46, 0.25],
-      "dijkstraStartVertex": 2921,
-      "ambientChordLength": 1.96573806942,
-      "edgeDijkstraRouteLength": 3.18671625333,
-      "tracedHeatMethodRouteLength": 2.99429175907,
-      "tracingReachedSource": true,
-      "fallbackUsed": false
-    }
+    {"id": "ridge-crossing", "label": "Ridge crossing", "description": "Cross the folded outer ridge from its raised eastern shoulder.", "startFace": 3337, "startBarycentric": [0.24, 0.43, 0.33], "dijkstraStartVertex": 1669, "ambientChordLength": 2.60181931444, "edgeDijkstraRouteLength": 3.16073031143, "tracedHeatMethodRouteLength": 3.05877107905, "tracingReachedSource": true, "fallbackUsed": false},
+    {"id": "inner-saddle-pass", "label": "Inner saddle pass", "description": "Thread the saddle-like inner throat where the tube bends in opposite directions.", "startFace": 12096, "startBarycentric": [0.31, 0.27, 0.42], "dijkstraStartVertex": 6112, "ambientChordLength": 2.05020856953, "edgeDijkstraRouteLength": 2.32573948039, "tracedHeatMethodRouteLength": 2.21469881161, "tracingReachedSource": true, "fallbackUsed": false},
+    {"id": "basin-rim", "label": "Basin rim", "description": "Skirt the raised rim of the localized outer-tube basin.", "startFace": 8208, "startBarycentric": [0.29, 0.46, 0.25], "dijkstraStartVertex": 4168, "ambientChordLength": 3.16988163486, "edgeDijkstraRouteLength": 3.99168646937, "tracedHeatMethodRouteLength": 3.77736333725, "tracingReachedSource": true, "fallbackUsed": false}
   ],
-  "exportDiagnostics": {
-    "scope": "Machine-specific timings from this export run, not canonical benchmark results",
-    "host": "local macOS export run (hardware not recorded)",
-    "preprocessingMilliseconds": 34.934667,
-    "heatSolveMilliseconds": 0.453541,
-    "poissonSolveMilliseconds": 0.610375,
-    "dijkstraMilliseconds": 0.851625
-  },
-  "gpu": {
-    "available": false,
-    "reason": "This CPU export run contains no CUDA runtime measurement."
-  },
+  "solver": {"language": "C++20", "library": "Eigen 3.4", "precision": "float64", "direct": "SimplicialLDLT", "iterative": "conjugate gradient with incomplete Cholesky"},
   "reference": "Crane, Weischedel, Wardetzky, Geodesics in Heat, ACM TOG 2013"
 }

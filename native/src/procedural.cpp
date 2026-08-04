@@ -30,13 +30,24 @@ void orientOutward(std::vector<Vec3>& vertices, std::vector<Triangle>& faces) {
   }
 }
 
-double ridge(double value, double width) {
-  return std::exp(-(value * value) / width);
+double periodicBump(double angle, double center, double concentration) {
+  return std::exp(concentration * (std::cos(angle - center) - 1.0));
 }
 
-double sphericalFeature(const Vec3& direction, const Vec3& center, double width) {
-  const double separation = 1.0 - std::clamp(direction.dot(center.normalized()), -1.0, 1.0);
-  return std::exp(-(separation * separation) / width);
+double seedPhase(std::uint32_t seed) {
+  const double twoPi = 2.0 * std::acos(-1.0);
+  return twoPi * static_cast<double>(seed % 10007U) / 10007.0;
+}
+
+Index nearestPeriodicIndex(double angle, int segmentCount) {
+  const double twoPi = 2.0 * std::acos(-1.0);
+  double wrapped = std::fmod(angle, twoPi);
+  if (wrapped < 0.0) {
+    wrapped += twoPi;
+  }
+  const auto rounded =
+      static_cast<long long>(std::llround(wrapped * static_cast<double>(segmentCount) / twoPi));
+  return static_cast<Index>((rounded % segmentCount + segmentCount) % segmentCount);
 }
 
 } // namespace
@@ -93,90 +104,103 @@ TriangleMesh makeIcosphere(int subdivisions, double radius) {
   return TriangleMesh::build(vertices, faces);
 }
 
-TriangleMesh makeCurvedWorld(const PlanetOptions& options) {
-  if (options.subdivisions < 1 || options.subdivisions > 8 || !(options.radius > 0.0) ||
-      !(options.relief >= 0.0) || options.relief > 0.4 || !std::isfinite(options.radius) ||
-      !std::isfinite(options.relief)) {
+TriangleMesh makeCurvedWorld(const TorusOptions& options) {
+  if (options.majorSegments < 12 || options.minorSegments < 8 || options.majorSegments > 2048 ||
+      options.minorSegments > 1024 || !(options.majorRadius > 0.0) ||
+      !(options.minorRadius > 0.0) || options.majorRadius <= 2.1 * options.minorRadius ||
+      !(options.relief >= 0.0) || options.relief > 0.3 || !std::isfinite(options.majorRadius) ||
+      !std::isfinite(options.minorRadius) || !std::isfinite(options.relief)) {
     throw std::invalid_argument("invalid curved-world parameters");
   }
-  TriangleMesh sphere = makeIcosphere(options.subdivisions, 1.0);
-  std::vector<Vec3> positions;
-  positions.reserve(sphere.vertices().size());
+
   const double twoPi = 2.0 * std::acos(-1.0);
-  const double phase = twoPi * static_cast<double>(options.seed % 10007U) / 10007.0;
-  const Vec3 basinCenter = Vec3(-0.58, 0.48, 0.66).normalized();
-  const Vec3 ridgeCenter = Vec3(0.28, 0.70, 0.66).normalized();
-  const Vec3 saddleCenter = Vec3(-0.10, -0.91, 0.40).normalized();
-  for (const auto& vertex : sphere.vertices()) {
-    const Vec3 q = vertex.position.normalized();
-    const double broad = 0.30 * std::sin(2.8 * q.x() + 1.2 * q.y() - 0.6 + phase) *
-                             std::cos(2.4 * q.z() - 0.7 * q.x()) +
-                         0.16 * std::sin(5.3 * (q.x() - 0.42 * q.y() + 0.30 * q.z()) - 0.3 * phase);
+  const double phase = seedPhase(options.seed);
+  std::vector<Vec3> positions;
+  positions.reserve(static_cast<std::size_t>(options.majorSegments * options.minorSegments));
+  for (int major = 0; major < options.majorSegments; ++major) {
+    const double u =
+        twoPi * static_cast<double>(major) / static_cast<double>(options.majorSegments);
+    const Vec3 radial(std::cos(u), std::sin(u), 0.0);
+    const Vec3 tangent(-std::sin(u), std::cos(u), 0.0);
 
-    // A raised, folded seam. The spherical window keeps it local while the narrow band makes
-    // the ridge readable in silhouette instead of turning the whole world into a corrugation.
-    const double ridgeBand = q.y() - 0.30 * std::sin(2.7 * q.z() + 0.4);
-    const double foldedRidge =
-        0.92 * ridge(ridgeBand, 0.018) * sphericalFeature(q, ridgeCenter, 0.42);
+    const double broadAsymmetry = 0.035 * std::cos(u - 0.35 + 0.08 * phase) +
+                                  0.022 * std::sin(2.0 * u + 0.4) +
+                                  0.012 * std::cos(3.0 * u - phase);
+    const double centerRadius = options.majorRadius * (1.0 + broadAsymmetry);
+    const double centerHeight =
+        options.majorRadius * options.relief *
+        (0.16 * std::sin(u - 0.3) + 0.055 * std::sin(3.0 * u + 0.25 * phase));
+    const double thickness =
+        options.minorRadius * (1.0 + 0.10 * std::cos(u - 1.15) + 0.035 * std::sin(2.0 * u + phase));
+    const double twist =
+        options.relief * (0.42 * std::sin(u + 0.2) + 0.13 * std::sin(3.0 * u - phase));
 
-    // The basin is intentionally deeper and wider than the old valley term. A small raised rim
-    // gives routes around it a visible navigational choice without producing an overhang.
-    const double basinCore = sphericalFeature(q, basinCenter, 0.050);
-    const double basinRim = sphericalFeature(q, basinCenter, 0.16) - basinCore;
-    const double valley = -1.05 * basinCore + 0.24 * basinRim;
+    for (int minor = 0; minor < options.minorSegments; ++minor) {
+      const double v =
+          twoPi * static_cast<double>(minor) / static_cast<double>(options.minorSegments);
+      const double tubeAngle = v + twist;
 
-    // A localized hyperbolic term creates a saddle/pass. It remains radial and smooth, so the
-    // surface stays star-shaped and the existing outward-orientation rule remains valid.
-    const Vec3 saddleDelta = q - saddleCenter;
-    const double saddleWindow = sphericalFeature(q, saddleCenter, 0.12);
-    const double saddle = 0.72 * saddleWindow * (3.2 * saddleDelta.x() * saddleDelta.z());
+      const double ridgeCenter = 0.14 + 0.20 * std::sin(2.0 * u - 0.5);
+      const double ridge = periodicBump(u, 0.48, 9.0) * periodicBump(v, ridgeCenter, 20.0);
 
-    // Compress a narrow channel between two fuller lobes. The longitudinal window prevents the
-    // channel from becoming a global waist.
-    const double channelBand = q.x() + 0.10 + 0.17 * std::sin(3.0 * q.z());
-    const double channelWindow = ridge(q.y() - 0.05, 0.22) * ridge(q.z() + 0.12, 0.30);
-    const double passage = -0.72 * ridge(channelBand, 0.014) * channelWindow;
+      const double basinCore = periodicBump(u, 2.34, 15.0) * periodicBump(v, 0.72, 16.0);
+      const double basinShoulder = periodicBump(u, 2.34, 6.0) * periodicBump(v, 0.72, 6.5);
+      const double basin = -0.88 * basinCore + 0.30 * (basinShoulder - basinCore);
 
-    const double unequalLobes = 0.34 * q.x() + 0.13 * (q.x() * q.x() - q.y() * q.y());
-    const double deformation = broad + foldedRidge + valley + saddle + passage + unequalLobes;
-    const double radialScale = std::max(0.62, 1.0 + options.relief * deformation);
+      const double saddleWindow =
+          periodicBump(u, 4.08, 10.0) * periodicBump(v, std::acos(-1.0), 7.0);
+      const double saddle = 0.34 * saddleWindow *
+                            (std::cos(2.0 * (u - 4.08)) - std::cos(2.0 * (v - std::acos(-1.0))));
+      const double innerPass =
+          -0.28 * periodicBump(u, 4.08, 13.0) * periodicBump(v, std::acos(-1.0), 14.0);
+      const double broadWarp = 0.11 * std::sin(2.0 * v - u + 0.35 * phase);
 
-    // Moderate anisotropy establishes unequal axes before local relief is applied.
-    const Vec3 anisotropic(1.20 * q.x(), 0.86 * q.y(), 1.06 * q.z());
-    Vec3 firstWarp(-q.y(), q.x(), 0.22 * q.y());
-    firstWarp -= firstWarp.dot(q) * q;
-    Vec3 secondWarp(q.z(), -0.18 * q.z(), -q.x());
-    secondWarp -= secondWarp.dot(q) * q;
-    const Vec3 tangentWarp =
-        options.radius * options.relief *
-        (0.105 * std::sin(3.8 * q.z() + 2.1 * q.x() + phase) * firstWarp +
-         0.070 * std::cos(3.2 * q.y() - 1.7 * q.z() - 0.5 * phase) * secondWarp);
-    positions.push_back(options.radius * radialScale * anisotropic + tangentWarp);
+      const double localScale = std::max(
+          0.72, 1.0 + options.relief * (0.92 * ridge + basin + saddle + innerPass + broadWarp));
+      const double radialOffset = thickness * localScale * std::cos(tubeAngle);
+      const double verticalOffset =
+          thickness * localScale * (0.96 + 0.035 * std::cos(2.0 * u - 0.2)) * std::sin(tubeAngle);
+      const double tangentOffset =
+          options.minorRadius * options.relief *
+          (0.11 * std::sin(2.0 * v + 3.0 * u) + 0.12 * ridge * std::sin(v - ridgeCenter));
+
+      positions.push_back((centerRadius + radialOffset) * radial + tangentOffset * tangent +
+                          Vec3(0.0, 0.0, centerHeight + verticalOffset));
+    }
   }
+
   std::vector<Triangle> faces;
-  faces.reserve(sphere.faces().size());
-  for (const auto& face : sphere.faces()) {
-    faces.push_back(face.vertices);
+  faces.reserve(static_cast<std::size_t>(2 * options.majorSegments * options.minorSegments));
+  const auto index = [&options](int major, int minor) {
+    return static_cast<Index>(major * options.minorSegments + minor);
+  };
+  for (int major = 0; major < options.majorSegments; ++major) {
+    const int nextMajor = (major + 1) % options.majorSegments;
+    for (int minor = 0; minor < options.minorSegments; ++minor) {
+      const int nextMinor = (minor + 1) % options.minorSegments;
+      const Index a = index(major, minor);
+      const Index b = index(nextMajor, minor);
+      const Index c = index(major, nextMinor);
+      const Index d = index(nextMajor, nextMinor);
+
+      // Increasing u crossed with increasing v follows the analytic outward tube normal.
+      // This winding remains correct on the inner ring, where an origin-dot-normal rule fails.
+      faces.push_back({a, b, d});
+      faces.push_back({a, d, c});
+    }
   }
-  orientOutward(positions, faces);
   return TriangleMesh::build(positions, faces);
 }
 
-Index selectCurvedWorldBeacon(const TriangleMesh& mesh) {
-  if (mesh.vertices().empty()) {
+Index selectCurvedWorldBeacon(const TriangleMesh& mesh, const TorusOptions& options) {
+  const std::size_t expectedVertexCount =
+      static_cast<std::size_t>(options.majorSegments * options.minorSegments);
+  if (mesh.vertices().size() != expectedVertexCount) {
     throw std::invalid_argument("beacon selection requires a nonempty mesh");
   }
-  const Vec3 target = Vec3(0.68, -0.34, -0.65).normalized();
-  Index best = 0;
-  double bestDot = -std::numeric_limits<double>::infinity();
-  for (Index vertex = 0; vertex < mesh.vertices().size(); ++vertex) {
-    const double score = mesh.vertices()[vertex].position.normalized().dot(target);
-    if (score > bestDot) {
-      bestDot = score;
-      best = vertex;
-    }
-  }
-  return best;
+  const Index major = nearestPeriodicIndex(5.63, options.majorSegments);
+  const Index minor = nearestPeriodicIndex(5.58, options.minorSegments);
+  return major * static_cast<Index>(options.minorSegments) + minor;
 }
 
 TriangleMesh makePlanarGrid(int rows, int columns, double spacing) {

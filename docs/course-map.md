@@ -1,134 +1,107 @@
-# Course Map: What to Study in Keenan Crane's DDG Material
+# Course Map: Discrete Geometry Behind the Project
 
-This map ties the implemented code to the current edition of Keenan Crane's
-[*Discrete Differential Geometry: An Applied Introduction*](https://www.cs.cmu.edu/~kmcrane/Projects/DDG/paper.pdf)
-and the CMU DDG course structure. Page numbers refer to the edition updated January 29, 2025; section
-numbers are more stable than pages.
-
-The shortest useful route is Chapters 2, 3, selected parts of 4 and 5, all core sections of Chapter 6,
-then the original [Heat Method paper](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf).
+This map connects the implementation to Keenan Crane's [*Discrete Differential Geometry: An Applied Introduction*](https://www.cs.cmu.edu/~kmcrane/Projects/DDG/paper.pdf) and the original [Heat Method paper](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf). Section numbers are more stable than page numbers.
 
 ## Direct mapping
 
-| Implemented concept | DDG material | What to learn | Code to read afterward |
+| Implemented concept | Material | Question to answer | Code to read |
 |---|---|---|---|
-| Triangle mesh as a simplicial complex | §2.1 “Abstract Simplicial Complex” (p. 8), §2.3 “Simplicial Surfaces” (p. 14) | Vertices/edges/faces, closure, manifold neighborhoods, oriented triangles | `native/include/geodesic/mesh.hpp`, `native/src/mesh.cpp` |
-| Local neighborhoods | §2.2 “Star, Closure, and Link” (p. 10) | Why a one-ring is a discrete neighborhood; vertex and edge manifold tests | `TriangleMesh::oneRing`, `incidentFaces`, `validateManifold` |
-| Sparse topology | §2.4 “Adjacency Matrices” (p. 16) | Connectivity as sparse structure; relation between topology and matrix nonzeros | cached adjacency in `mesh.cpp`; Dijkstra in `dijkstra.cpp` |
-| Halfedge structure | §2.5 “Halfedge Mesh” (p. 18), §2.7 coding exercises (p. 27) | `next`, `twin`, boundary loops, vertex/face traversal, orientation | all halfedge records and construction in `mesh.cpp` |
-| Intrinsic vs. extrinsic geometry | §3.1 “The Geometry of Surfaces” (p. 29), §3.2 “Derivatives and Tangent Vectors” (p. 32) | The metric, tangent planes, quantities unchanged by bending, why a 3D chord is wrong | opening acts; geometry in `operators.cpp` |
-| Gradient intuition | §4.3 “Vectors and 1-Forms” (p. 55), §4.6 “Differential Operators” (p. 68) | Differential of a scalar, gradient via inner product, divergence, Laplacian | `faceGradient`, `gradientLoad` |
-| Integration and weak form | §4.7 “Integration and Stokes' Theorem” (p. 74) | Moving derivatives from a trial function to basis/test functions; boundary terms | `assembleOperators`, `gradientLoad` |
-| Orientation and discrete fields | §4.8 “Discrete Exterior Calculus” (p. 78), especially orientation discussion around pp. 79–80 | Oriented simplices, vertex 0-forms, edge differences, primal/dual quantities | halfedge orientation and face-local basis order |
-| Triangle area and normals | §5.1 “Vector Area” (p. 85), §5.2 “Area Gradient” (p. 88) | Cross products, area gradients, area-weighted normals | `faceArea`, `faceNormal`, `vertexNormal` |
-| Cotangent formula intuition | §5.2.1 “Mean Curvature Vector” (p. 89) | Why the cotan expression recurs and how it connects to Laplace–Beltrami | cotangent contributions in `operators.cpp` |
-| Numerical convergence mindset | §5.6 “Numerical Tests and Convergence” (p. 96) | Compare refinement sequences and analytic geometry rather than trusting one mesh | flat and great-circle tests |
-| Laplacian properties | §6.1 “Basic Properties” (p. 101) | Symmetry, positive semidefiniteness, constants in the nullspace, Dirichlet energy | Laplacian row-sum/symmetry tests |
-| FEM derivation | §6.2 “Discretization via FEM” (p. 104), especially Exercises 6.6–6.8 (pp. 107–108) | Piecewise-linear hat gradients, local stiffness, cotangent entries | `FaceGeometry::barycentricGradients`, sparse triplets |
-| DEC derivation | §6.3 “Discretization via DEC” (p. 108) | A second derivation of the same operator using exterior derivative and Hodge star | conceptual cross-check for `L`; not a separate code path |
-| Sparse matrices and mesh indexing | §6.4 “Meshes and Matrices” (p. 111) | Assembly, index maps, sparsity pattern, matrix/vector dimensions | `SparseMatrix`, triplet assembly, CUDA CSR conversion |
-| Poisson and nullspace | §6.5 “The Poisson Equation” (p. 113) | Weak Poisson solve, compatibility, fixing the additive constant | `pinnedPoissonMatrix`, `gradientLoad` |
-| Implicit diffusion | §6.6 “Implicit Mean Curvature Flow” (p. 114) | Backward Euler systems, stability, mass plus stiffness structure | `makeHeatMatrix`, `solveHeatAtTime` |
-| Boundary conditions | §6.7 “Boundary Conditions” (p. 116) | Natural Neumann terms vs. Dirichlet constraints | boundary assembly behavior and tests |
-| Vector-field integration | §8.1 “Hodge Decomposition” (p. 139) | Exact/coexact/harmonic components; why an arbitrary face field may need global projection | intuition for the Poisson reconstruction |
-| Path transport across faces | §8.3 “Connections and Parallel Transport” (p. 151) as enrichment | How tangent directions relate across a piecewise-flat surface | edge crossing in `path.cpp`; implementation uses reprojection, not full transport machinery |
-| Geometry derivatives | Appendix A, especially the area derivatives (p. 165 onward) | Verify signs and derivatives used in local operators | geometry calculations and future optimization work |
+| Triangle mesh as a simplicial surface | DDG §2.1 to §2.3 | What do vertices, edges, faces, closure, and manifold neighborhoods mean? | `mesh.hpp`, `mesh.cpp` |
+| Halfedge connectivity | DDG §2.5 | How do `next` and `twin` encode face traversal, orientation, and boundaries? | halfedge construction and validation in `mesh.cpp` |
+| Intrinsic and extrinsic geometry | DDG §3.1 to §3.2 | Why can a 3D chord be shorter yet inadmissible? | public story, geometry utilities |
+| Gradients and divergence | DDG §4.3 and §4.6 | How does a scalar field produce tangent directions, and how are directions integrated? | `faceGradient`, `gradientLoad` |
+| Integration and weak form | DDG §4.7 | Why does the Poisson right-hand side use area-weighted basis gradients? | `operators.cpp` |
+| Orientation | DDG §4.8 | Why does triangle order matter for normals and face-local operators? | torus winding in `procedural.cpp`, mesh validation |
+| Triangle area and normals | DDG §5.1 to §5.2 | How do cross products supply area, oriented normals, and basis gradients? | `operators.cpp`, `mesh.cpp` |
+| Numerical convergence | DDG §5.6 | How do resolution and triangle quality affect approximation error? | geometry and residual tests |
+| Laplacian properties | DDG §6.1 | Why should the stiffness matrix be symmetric with zero row sums? | `assembleOperators`, operator tests |
+| Finite-element cotangent operator | DDG §6.2 | How do local hat-function energies produce cotangent weights? | face geometry and sparse triplets |
+| Sparse indexing | DDG §6.4 | How does local mesh incidence become a sparse global matrix? | `operators.cpp`, Eigen matrix types |
+| Poisson nullspace | DDG §6.5 | Why is distance defined only up to a constant before pinning? | pinned Poisson matrix in `heat_method.cpp` |
+| Implicit diffusion | DDG §6.6 | Why does backward Euler produce (M+tL)? | heat matrix assembly and solve |
+| Boundary behavior | DDG §6.7 | What changes between a closed torus and a mesh with boundary? | boundary validation and natural weak assembly |
+| Vector-field integration | DDG §8.1 | Why might normalized face directions fail to be one exact gradient? | Poisson reconstruction |
+| Face-to-face path movement | DDG §8.3 as enrichment | How are tangent directions interpreted across a piecewise-flat surface? | barycentric crossings in `path.cpp` |
 
-## The Heat Method paper
+## Heat Method reading sequence
 
-After Chapter 6, read the [TOG paper](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf)
-in this order:
+After the core mesh and Laplacian sections, read the Heat Method paper in this order:
 
-1. **Introduction and algorithm outline:** internalize “direction first, distance second.”
-2. **Heat kernel/Varadhan intuition:** understand why short-time heat contains geodesic information,
-   but do not confuse the theoretical limit formula with the practical normalized-gradient algorithm.
-3. **Algorithm 1 / discretization:** align the paper's Laplacian sign with this repository's positive
-   stiffness convention.
-4. **Choice of time:** connect \(t=mh^2\) to `DiscreteOperators::suggestedTimeStep`.
-5. **Precomputation:** connect reusable factors to `HeatMethodSolver` and the benchmark split.
-6. **Robustness and convergence experiments:** compare with the planar and sphere tests here.
+1. Read the introduction and algorithm outline for the sequence: heat, direction, distance.
+2. Study the short-time heat-kernel intuition. Keep the limiting theory separate from the practical normalized-gradient algorithm.
+3. Reconcile the paper's Laplacian convention with this repository's positive stiffness matrix (L\approx-\Delta).
+4. Connect the recommended time (t\propto h^2) to `DiscreteOperators::suggestedTimeStep`.
+5. Connect precomputation to reusable heat and Poisson factors in `HeatMethodSolver`.
+6. Compare the paper's error discussion with this project's resolution, quality, residual, and route tests.
 
-Then read the project's current [Heat Method page](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/)
-“Additional Notes.” It recommends an intrinsic Laplacian on triangle meshes and explicitly points to
-parallel sparse solvers and parallel matrix construction as performance opportunities. Those notes
-explain both the project's main limitation and the motivation for its CUDA architecture.
+## Study path 1: explain the project
 
-## Suggested study sequence
+1. Study simplicial surfaces and halfedges in DDG §2.1 to §2.5.
+2. Study surface metrics and tangent vectors in §3.1 to §3.2.
+3. Study triangle area and normals in §5.1 to §5.2.
+4. Study Laplacian properties and the finite-element derivation in §6.1 to §6.2.
+5. Study sparse matrices, Poisson, implicit diffusion, and boundaries in §6.4 to §6.7.
+6. Read the Heat Method paper's introduction and algorithm.
+7. Read `mesh.cpp`, `operators.cpp`, `heat_method.cpp`, and `path.cpp` in that order.
 
-### Pass 1: enough to explain the project (6–8 hours)
+## Study path 2: derive the implementation
 
-1. §2.1–2.5: combinatorial surfaces and halfedges.
-2. §3.1–3.2: surface metric and tangent vectors.
-3. §5.1–5.2: triangle area, normals, cotan preview.
-4. §6.1–6.2: Laplacian properties and FEM cotan derivation.
-5. §6.4–6.7: matrices, Poisson, implicit flow, boundaries.
-6. Heat Method paper introduction and algorithm.
-7. Read `mesh.cpp`, `operators.cpp`, and `heat_method.cpp` in that order.
+1. Derive the three barycentric basis gradients on one triangle.
+2. Show that (\sum_i\nabla b_i=0), hence a constant field has zero gradient.
+3. Assemble (A_f\nabla b_i\cdot\nabla b_j) and recover the cotangent formula.
+4. Derive the weak load (\sum_f A_f\nabla b_i\cdot X_f).
+5. Explain why the Poisson matrix has a constant nullspace.
+6. Derive barycentric coordinate velocities for one path-crossing step.
+7. Read the operator, solve, and tracer tests beside each derivation.
 
-### Pass 2: enough to derive it (8–12 additional hours)
+## Study path 3: understand the torus
 
-1. §4.3, §4.6–4.8: gradient/divergence, Stokes, and DEC.
-2. Work Exercises 6.6–6.8 by hand; these reproduce the face basis and cotangent entries.
-3. Derive `gradientLoad` from the weak inner product.
-4. Explain the Poisson pin as a gauge choice.
-5. Reproduce the planar-grid and great-circle expected values.
-6. Read `path.cpp` and derive the barycentric crossing time.
-
-### Pass 3: enough to discuss extensions (6–10 additional hours)
-
-1. §5.6 on convergence and mesh dependence.
-2. §8.1 on Hodge decomposition as a broader view of vector-field integration.
-3. §8.3 for tangent vectors across faces.
-4. The Heat Method paper's evaluation and limitations.
-5. The authors' notes on intrinsic Laplacians.
-6. Review sparse Cholesky, PCG, Jacobi/incomplete-Cholesky preconditioning, and GPU memory bandwidth.
+1. Parameterize a reference torus with periodic (u) and (v).
+2. Differentiate the parameterization and use (\partial_u p\times\partial_v p) to establish winding.
+3. Enumerate wrapped grid edges and verify that every edge has two incident triangles.
+4. Count (V), (E), and (F), then use (\chi=2-2g) to recover genus one.
+5. Explain why a normal dotted with position relative to the origin is not a valid winding rule on the inner tube.
+6. Inspect the periodic relief terms and identify the ridge, basin, rim, broad thickness change, and saddle-like throat.
+7. Read the torus geometry tests and the parameter-space route authoring in `io.cpp`.
 
 ## Exercises tied to this repository
 
 ### Exercise A: prove the row sum
 
-Starting from local stiffness entries \(A_f\nabla b_i\cdot\nabla b_j\), use
-\(\sum_j b_j=1\) to show \(L\mathbf{1}=0\). Then inspect `testOperators`.
+Starting from (L^f_{ij}=A_f\nabla b_i\cdot\nabla b_j), use (\sum_jb_j=1) to show (L\mathbf{1}=0). Compare the result with the symmetry and row-sum test.
 
 ### Exercise B: derive one face gradient
 
-For a triangle in the \(xy\)-plane, derive
-\(\nabla b_0=n\times(p_2-p_1)/(2A)\). Evaluate it on the unit right triangle and compare with
-`assembleOperators`.
+For the unit right triangle in the xy-plane, derive every (\nabla b_i). Apply them to a constant field and a linear x-coordinate field, then compare with `faceGradient`.
 
 ### Exercise C: reconcile signs
 
-Start from a continuum convention \(\Delta=\operatorname{div}\nabla\) with nonpositive spectrum.
-Show why this repository's positive \(L\approx-\Delta\) gives `(M + tL)` and why the weak load is
-\(\sum A\nabla b_i\cdot X\).
+Begin with a continuum Laplacian (\Delta=\operatorname{div}\nabla) with nonpositive spectrum. Show why a positive (L\approx-\Delta) gives (M+tL) in the heat step and the implemented sign in the weak Poisson load.
 
-### Exercise D: analyze timestep units
+### Exercise D: check units
 
-Scale every position by \(s\). Show that mass scales by \(s^2\), stiffness is dimensionless, and
-\(t=h^2\) scales by \(s^2\), leaving the heat system consistent.
+Scale every mesh position by (s). Show that mass scales by (s^2), stiffness remains dimensionless in the weak form, and (t=h^2) scales by (s^2).
 
-### Exercise E: trace one path crossing
+### Exercise E: count the torus
 
-Choose barycentric coordinates \((0.2,0.3,0.5)\) and arbitrary negative-gradient direction. Compute
-all \(\dot\lambda_i\), find the first zero coordinate, and identify `adjacentFaceAcross`.
+For (n\) major and (m\) minor segments, show that the wrapped grid has (V=nm), (F=2nm), and (E=3nm). Verify (V-E+F=0).
 
-### Exercise F: compare solvers
+### Exercise F: validate orientation
 
-Run direct and iterative modes on increasingly refined icospheres. Record residual, iterations,
-factor/precondition time, and query time. Explain when repeated right-hand sides change the decision.
+For the undeformed parameterization, calculate (\partial_u p\times\partial_v p). Check its direction against the vector from the centerline to the tube point. Relate that order to the two triangle patterns in each periodic quad.
 
-### Exercise G: design the intrinsic extension
+### Exercise G: trace one crossing
 
-Sketch how intrinsic Delaunay flips would change topology used for operator assembly while preserving
-values on original vertices. Identify which mesh and path assumptions would need revision.
+Start with barycentric coordinates ((0.2,0.3,0.5)) and an arbitrary in-face descent direction. Compute (\dot\lambda_i), find the first coordinate to reach zero, and identify the adjacent face through `adjacentFaceAcross`.
 
-## What is outside the minimum study path
+### Exercise H: compare the three distances
 
-Chapters 7 and most of 8 are excellent DDG but not required to defend this implementation. Surface
-parameterization, homology generators, and vector-field singularity design are not covertly claimed by
-the code. Study them after the sequence above unless an interviewer specifically steers toward
-conformal geometry or topology.
+For one exported preset, inspect its chord, Dijkstra polyline, and Heat trace. State the legal movement domain for each before comparing the numbers.
 
-Likewise, CUDA details are numerical linear algebra and systems material rather than core DDG. Study
-CSR, SpMV, PCG, preconditioning, synchronization, transfer accounting, and floating-point reduction
-separately from the geometry derivation.
+### Exercise I: analyze factor reuse
+
+Run the benchmark across its default torus resolutions. Separate assembly, factorization, one query, reused queries, and Dijkstra. Explain why total preprocessing should not be attributed to every later source.
+
+## Topics outside the core claim
+
+The implementation does not compute smooth Gaussian curvature, exact continuous geodesics, cut loci, intrinsic Delaunay remeshing, or globally optimal representatives for every torus homotopy class. These are valuable extensions, but they are not prerequisites for understanding the code that is present.

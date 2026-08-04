@@ -6,7 +6,6 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -68,52 +67,62 @@ struct AuthoredRouteSeed {
   const char* id;
   const char* label;
   const char* description;
-  Vec3 direction;
+  double u;
+  double v;
   std::array<double, 3> barycentric;
 };
 
 const std::array<AuthoredRouteSeed, 3> kAuthoredRouteSeeds{{
     {"ridge-crossing",
      "Ridge crossing",
-     "Cross the raised folded ridge from the high northern lobe.",
-     Vec3(0.05, 0.78, 0.62),
+     "Cross the folded outer ridge from its raised eastern shoulder.",
+     1.05,
+     0.45,
      {0.24, 0.33, 0.43}},
-    {"saddle-pass",
-     "Saddle pass",
-     "Enter through the low saddle where two slopes trade height.",
-     Vec3(-0.10, -0.91, 0.40),
-     {0.41, 0.22, 0.37}},
+    {"inner-saddle-pass",
+     "Inner saddle pass",
+     "Thread the saddle-like inner throat where the tube bends in opposite directions.",
+     3.72,
+     3.15,
+     {0.31, 0.27, 0.42}},
     {"basin-rim",
      "Basin rim",
-     "Trace the long rim of the deep asymmetric basin.",
-     Vec3(-0.72, 0.33, 0.61),
+     "Skirt the raised rim of the localized outer-tube basin.",
+     2.55,
+     0.85,
      {0.29, 0.46, 0.25}},
 }};
 
-std::vector<Index> facesNearestDirection(const TriangleMesh& mesh, const Vec3& direction) {
-  const Vec3 target = direction.normalized();
-  std::vector<std::pair<double, Index>> scored;
-  scored.reserve(mesh.faces().size());
-  for (Index face = 0; face < mesh.faces().size(); ++face) {
-    const Triangle& triangle = mesh.faces()[face].vertices;
-    Vec3 centroid = Vec3::Zero();
-    for (const Index vertex : triangle) {
-      centroid += mesh.vertices()[vertex].position;
+int wrapIndex(int value, int count) {
+  const int remainder = value % count;
+  return remainder < 0 ? remainder + count : remainder;
+}
+
+std::vector<SurfacePoint> torusFeatureCandidates(const AuthoredRouteSeed& seed,
+                                                 const TorusOptions& options) {
+  const double twoPi = 2.0 * std::acos(-1.0);
+  const int centralMajor =
+      static_cast<int>(std::floor(seed.u * static_cast<double>(options.majorSegments) / twoPi));
+  const int centralMinor =
+      static_cast<int>(std::floor(seed.v * static_cast<double>(options.minorSegments) / twoPi));
+  std::vector<SurfacePoint> candidates;
+  candidates.reserve(360U);
+  for (int radius = 0; radius <= 6; ++radius) {
+    for (int majorOffset = -radius; majorOffset <= radius; ++majorOffset) {
+      for (int minorOffset = -radius; minorOffset <= radius; ++minorOffset) {
+        if (std::max(std::abs(majorOffset), std::abs(minorOffset)) != radius) {
+          continue;
+        }
+        const int major = wrapIndex(centralMajor + majorOffset, options.majorSegments);
+        const int minor = wrapIndex(centralMinor + minorOffset, options.minorSegments);
+        const Index quad = static_cast<Index>(major * options.minorSegments + minor);
+        candidates.push_back(SurfacePoint{2U * quad, seed.barycentric});
+        candidates.push_back(SurfacePoint{
+            2U * quad + 1U, {seed.barycentric[0], seed.barycentric[2], seed.barycentric[1]}});
+      }
     }
-    centroid /= 3.0;
-    scored.emplace_back(centroid.normalized().dot(target), face);
   }
-  std::sort(scored.begin(), scored.end(), [](const auto& first, const auto& second) {
-    return first.first > second.first ||
-           (first.first == second.first && first.second < second.second);
-  });
-  std::vector<Index> faces;
-  faces.reserve(scored.size());
-  for (const auto& [score, face] : scored) {
-    static_cast<void>(score);
-    faces.push_back(face);
-  }
-  return faces;
+  return candidates;
 }
 
 Index nearestFaceVertex(const TriangleMesh& mesh, const SurfacePoint& start) {
@@ -140,9 +149,38 @@ double polylineLength(const std::vector<Vec3>& points) {
   return length;
 }
 
-std::string exportHostDescription() {
-  const char* value = std::getenv("GEODESIC_EXPORT_HOST");
-  return value != nullptr && value[0] != '\0' ? value : "unspecified local export host";
+struct MeshQuality {
+  double minimumAngleDegrees{180.0};
+  double maximumAspectRatio{0.0};
+};
+
+MeshQuality measureMeshQuality(const TriangleMesh& mesh) {
+  MeshQuality quality;
+  const double radiansToDegrees = 180.0 / std::acos(-1.0);
+  for (Index face = 0; face < mesh.faces().size(); ++face) {
+    const Triangle& triangle = mesh.faces()[face].vertices;
+    const Vec3& a = mesh.vertices()[triangle[0]].position;
+    const Vec3& b = mesh.vertices()[triangle[1]].position;
+    const Vec3& c = mesh.vertices()[triangle[2]].position;
+    const std::array<double, 3> lengths{(b - c).norm(), (c - a).norm(), (a - b).norm()};
+    const double area = mesh.faceArea(face);
+    const double longestSquared =
+        std::max({lengths[0] * lengths[0], lengths[1] * lengths[1], lengths[2] * lengths[2]});
+    quality.maximumAspectRatio =
+        std::max(quality.maximumAspectRatio, longestSquared / (2.0 * area));
+    for (std::size_t corner = 0; corner < 3U; ++corner) {
+      const double adjacentFirst = lengths[(corner + 1U) % 3U];
+      const double adjacentSecond = lengths[(corner + 2U) % 3U];
+      const double opposite = lengths[corner];
+      const double cosine = std::clamp(
+          (adjacentFirst * adjacentFirst + adjacentSecond * adjacentSecond - opposite * opposite) /
+              (2.0 * adjacentFirst * adjacentSecond),
+          -1.0, 1.0);
+      quality.minimumAngleDegrees =
+          std::min(quality.minimumAngleDegrees, std::acos(cosine) * radiansToDegrees);
+    }
+  }
+  return quality;
 }
 
 } // namespace
@@ -241,14 +279,15 @@ void writePathObj(const std::vector<Vec3>& points, const std::filesystem::path& 
   requireStream(output, path);
 }
 
-std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mesh,
-                                                         const HeatMethodSolver& solver,
-                                                         const HeatMethodResult& heat,
-                                                         const DijkstraResult& dijkstra,
-                                                         Index sourceVertex) {
+std::vector<WebRoutePreset>
+buildCurvedWorldRoutePresets(const TriangleMesh& mesh, const HeatMethodSolver& solver,
+                             const HeatMethodResult& heat, const DijkstraResult& dijkstra,
+                             Index sourceVertex, const TorusOptions& options) {
   if (sourceVertex >= mesh.vertices().size() ||
       heat.distance.size() != static_cast<Eigen::Index>(mesh.vertices().size()) ||
-      dijkstra.predecessor.size() != mesh.vertices().size()) {
+      dijkstra.predecessor.size() != mesh.vertices().size() ||
+      mesh.vertices().size() !=
+          static_cast<std::size_t>(options.majorSegments * options.minorSegments)) {
     throw std::invalid_argument("route preset inputs do not match the mesh");
   }
 
@@ -256,20 +295,19 @@ std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mes
   presets.reserve(kAuthoredRouteSeeds.size());
   const Vec3& source = mesh.vertices()[sourceVertex].position;
   for (const AuthoredRouteSeed& seed : kAuthoredRouteSeeds) {
-    const std::vector<Index> candidateFaces = facesNearestDirection(mesh, seed.direction);
+    const std::vector<SurfacePoint> candidates = torusFeatureCandidates(seed, options);
     std::optional<WebRoutePreset> selected;
     std::string lastTermination = "no candidate evaluated";
-    const std::size_t candidateCount = std::min<std::size_t>(candidateFaces.size(), 240U);
-    for (std::size_t candidate = 0; candidate < candidateCount && !selected; ++candidate) {
+    for (const SurfacePoint& candidate : candidates) {
       WebRoutePreset preset;
       preset.id = seed.id;
       preset.label = seed.label;
       preset.description = seed.description;
-      preset.start = SurfacePoint{candidateFaces[candidate], seed.barycentric};
+      preset.start = candidate;
       const Vec3 startPoint = interpolateSurfacePoint(mesh, preset.start);
       bool distinctStart = true;
       for (const WebRoutePreset& existing : presets) {
-        if ((interpolateSurfacePoint(mesh, existing.start) - startPoint).norm() < 0.45) {
+        if ((interpolateSurfacePoint(mesh, existing.start) - startPoint).norm() < 0.7) {
           distinctStart = false;
           break;
         }
@@ -279,8 +317,11 @@ std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mes
       }
 
       preset.dijkstraStartVertex = nearestFaceVertex(mesh, preset.start);
-      const PathResult traced = traceDistanceGradient(mesh, solver.operators().faceGeometry,
-                                                      heat.distance, sourceVertex, preset.start);
+      PathOptions traceOptions;
+      traceOptions.enableVertexFallback = false;
+      const PathResult traced =
+          traceDistanceGradient(mesh, solver.operators().faceGeometry, heat.distance, sourceVertex,
+                                preset.start, traceOptions);
       lastTermination = traced.termination;
       preset.tracingReachedSource = traced.reachedSource;
       preset.fallbackUsed = traced.usedFallback;
@@ -309,18 +350,19 @@ std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mes
       bool distinctLength = true;
       for (const WebRoutePreset& existing : presets) {
         if (std::abs(existing.tracedHeatMethodRouteLength - preset.tracedHeatMethodRouteLength) <
-            0.015) {
+            0.04) {
           distinctLength = false;
           break;
         }
       }
-      if (preset.tracingReachedSource && !preset.fallbackUsed && preset.tracedPoints.size() >= 2U &&
+      if (preset.tracingReachedSource && !preset.fallbackUsed && preset.tracedPoints.size() >= 3U &&
           !preset.edgeVertices.empty() && preset.edgeVertices.back() == sourceVertex &&
           std::isfinite(preset.ambientChordLength) &&
           std::isfinite(preset.edgeDijkstraRouteLength) &&
           std::isfinite(preset.tracedHeatMethodRouteLength) && saneSurfaceLength &&
           distinctLength) {
         selected = std::move(preset);
+        break;
       }
     }
     if (!selected) {
@@ -335,9 +377,9 @@ std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const TriangleMesh& mes
     const Vec3 firstPoint = interpolateSurfacePoint(mesh, presets[first].start);
     for (std::size_t second = first + 1U; second < presets.size(); ++second) {
       const Vec3 secondPoint = interpolateSurfacePoint(mesh, presets[second].start);
-      if ((firstPoint - secondPoint).norm() < 0.45 ||
+      if ((firstPoint - secondPoint).norm() < 0.7 ||
           std::abs(presets[first].tracedHeatMethodRouteLength -
-                   presets[second].tracedHeatMethodRouteLength) < 0.015) {
+                   presets[second].tracedHeatMethodRouteLength) < 0.04) {
         throw std::runtime_error("authored route presets are not spatially distinct");
       }
     }
@@ -351,9 +393,10 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
     throw std::invalid_argument("web export requires at least one heat frame");
   }
   std::filesystem::create_directories(outputDirectory);
-  TriangleMesh mesh = makeCurvedWorld(PlanetOptions{options.subdivisions});
-  const Index source =
-      options.sourceVertex == kInvalidIndex ? selectCurvedWorldBeacon(mesh) : options.sourceVertex;
+  TriangleMesh mesh = makeCurvedWorld(options.torus);
+  const Index source = options.sourceVertex == kInvalidIndex
+                           ? selectCurvedWorldBeacon(mesh, options.torus)
+                           : options.sourceVertex;
   if (source >= mesh.vertices().size()) {
     throw std::invalid_argument("web export source is out of range");
   }
@@ -364,7 +407,7 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
   HeatMethodResult heat = solver.compute(source);
   DijkstraResult dijkstra = edgeDijkstra(mesh, source);
   const std::vector<WebRoutePreset> routePresets =
-      buildCurvedWorldRoutePresets(mesh, solver, heat, dijkstra, source);
+      buildCurvedWorldRoutePresets(mesh, solver, heat, dijkstra, source, options.torus);
 
   std::vector<Vector> heatFrames;
   std::vector<double> frameTimes;
@@ -409,9 +452,9 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
   const std::filesystem::path binaryPath = outputDirectory / "world.bin";
   std::ofstream binary(binaryPath, std::ios::binary);
   requireStream(binary, binaryPath);
-  constexpr std::array<char, 8> magic{'G', 'E', 'O', 'W', 'R', 'L', 'D', '1'};
+  constexpr std::array<char, 8> magic{'G', 'E', 'O', 'W', 'R', 'L', 'D', '2'};
   binary.write(magic.data(), static_cast<std::streamsize>(magic.size()));
-  writeLittleEndian<std::uint32_t>(binary, 1U);
+  writeLittleEndian<std::uint32_t>(binary, 2U);
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(mesh.vertices().size()));
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(mesh.faces().size()));
   writeLittleEndian<std::uint32_t>(binary, static_cast<std::uint32_t>(heatFrames.size()));
@@ -485,15 +528,37 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
   const std::filesystem::path metadataPath = outputDirectory / "world.meta.json";
   std::ofstream metadata(metadataPath);
   requireStream(metadata, metadataPath);
+  const long long eulerCharacteristic = static_cast<long long>(mesh.vertices().size()) -
+                                        static_cast<long long>(mesh.edges().size()) +
+                                        static_cast<long long>(mesh.faces().size());
+  std::size_t boundaryEdges = 0;
+  for (Index edge = 0; edge < mesh.edges().size(); ++edge) {
+    if (mesh.isBoundaryEdge(edge)) {
+      ++boundaryEdges;
+    }
+  }
+  const MeshQuality quality = measureMeshQuality(mesh);
   metadata
       << std::setprecision(12) << "{\n"
-      << "  \"schema\": \"geodesic-world-v1\",\n"
+      << "  \"schema\": \"geodesic-world-v2\",\n"
       << "  \"title\": \"The Shortest Path Through a Curved World\",\n"
-      << "  \"deterministicSeed\": " << PlanetOptions{}.seed << ",\n"
-      << "  \"subdivisions\": " << options.subdivisions << ",\n"
+      << "  \"deterministicSeed\": " << options.torus.seed << ",\n"
+      << "  \"mesh\": {\"kind\": \"procedural-torus\", \"majorSegments\": "
+      << options.torus.majorSegments << ", \"minorSegments\": " << options.torus.minorSegments
+      << ", \"majorRadius\": " << options.torus.majorRadius
+      << ", \"minorRadius\": " << options.torus.minorRadius
+      << ", \"relief\": " << options.torus.relief << "},\n"
       << "  \"vertices\": " << mesh.vertices().size() << ",\n"
       << "  \"faces\": " << mesh.faces().size() << ",\n"
       << "  \"sourceVertex\": " << source << ",\n"
+      << "  \"source\": {\"vertex\": " << source
+      << ", \"u\": 5.63, \"v\": 5.58, \"label\": \"Heat source\"},\n"
+      << "  \"topology\": {\"closed\": true, \"orientedManifold\": true, "
+         "\"boundaryEdges\": "
+      << boundaryEdges << ", \"eulerCharacteristic\": " << eulerCharacteristic
+      << ", \"genus\": 1},\n"
+      << "  \"quality\": {\"minimumAngleDegrees\": " << quality.minimumAngleDegrees
+      << ", \"maximumAspectRatio\": " << quality.maximumAspectRatio << "},\n"
       << "  \"meanEdgeLength\": " << solver.operators().meanEdgeLength << ",\n"
       << "  \"heatMethodTimeStep\": " << solver.operators().suggestedTimeStep << ",\n"
       << "  \"laplacianSign\": \"positive-semidefinite stiffness matrix approximating -Delta\",\n"
@@ -519,17 +584,9 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
              << (index + 1U == routePresets.size() ? "\n" : ",\n");
   }
   metadata << "  ],\n"
-           << "  \"exportDiagnostics\": {\n"
-           << "    \"scope\": \"Machine-specific timings from this export run, not canonical "
-              "benchmark results\",\n"
-           << "    \"host\": \"" << exportHostDescription() << "\",\n"
-           << "    \"preprocessingMilliseconds\": " << solver.preprocessingMilliseconds() << ",\n"
-           << "    \"heatSolveMilliseconds\": " << heat.heatReport.milliseconds << ",\n"
-           << "    \"poissonSolveMilliseconds\": " << heat.poissonReport.milliseconds << ",\n"
-           << "    \"dijkstraMilliseconds\": " << dijkstra.milliseconds << "\n"
-           << "  },\n"
-           << "  \"gpu\": {\"available\": false, \"reason\": \"This CPU export run contains no "
-              "CUDA runtime measurement.\"},\n"
+           << "  \"solver\": {\"language\": \"C++20\", \"library\": \"Eigen 3.4\", "
+              "\"precision\": \"float64\", \"direct\": \"SimplicialLDLT\", "
+              "\"iterative\": \"conjugate gradient with incomplete Cholesky\"},\n"
            << "  \"reference\": \"Crane, Weischedel, Wardetzky, Geodesics in Heat, ACM TOG 2013\"\n"
            << "}\n";
   requireStream(metadata, metadataPath);

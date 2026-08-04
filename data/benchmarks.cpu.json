@@ -1,18 +1,18 @@
 {
-  "schema": "geodesic-benchmark-v1",
+  "schema": "geodesic-benchmark-v2",
   "clock": "std::chrono::steady_clock",
   "precision": "float64",
-  "host": "Apple M4 (10-core), 16 GB, macOS 26.5",
+  "host": "Apple M4 (10-core) MacBook Pro, 16 GB, macOS 26.5",
   "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
   "buildType": "Release",
-  "repetitions": 7,
   "warmupQueries": 1,
-  "gpu": {"available": false, "measured": false},
+  "reusedSourceCount": 8,
+  "dijkstraRepetitions": 7,
   "cases": [
-    {"subdivisions": 2, "vertices": 162, "faces": 320, "meshMilliseconds": 0.268708, "preprocessingMilliseconds": 0.227833, "queryMilliseconds": 0.007857142857, "dijkstraMilliseconds": 0.01186314286, "heatResidual": 2.409337941e-16, "poissonResidual": 4.206296552e-15},
-    {"subdivisions": 3, "vertices": 642, "faces": 1280, "meshMilliseconds": 0.811, "preprocessingMilliseconds": 0.811834, "queryMilliseconds": 0.03991671429, "dijkstraMilliseconds": 0.04204742857, "heatResidual": 1.62891723e-16, "poissonResidual": 2.040777759e-14},
-    {"subdivisions": 4, "vertices": 2562, "faces": 5120, "meshMilliseconds": 3.21925, "preprocessingMilliseconds": 4.965959, "queryMilliseconds": 0.2258568571, "dijkstraMilliseconds": 0.2127081429, "heatResidual": 2.308378764e-16, "poissonResidual": 1.480724611e-13},
-    {"subdivisions": 5, "vertices": 10242, "faces": 20480, "meshMilliseconds": 13.027625, "preprocessingMilliseconds": 37.093167, "queryMilliseconds": 1.159958429, "dijkstraMilliseconds": 0.8249402857, "heatResidual": 3.123038597e-16, "poissonResidual": 5.093571594e-13},
-    {"subdivisions": 6, "vertices": 40962, "faces": 81920, "meshMilliseconds": 70.33875, "preprocessingMilliseconds": 287.142833, "queryMilliseconds": 5.837279714, "dijkstraMilliseconds": 3.851988143, "heatResidual": 4.92244621e-16, "poissonResidual": 1.777577338e-12}
+    {"majorSegments": 20, "minorSegments": 8, "vertices": 160, "faces": 320, "meshMilliseconds": 0.177791, "operatorAssemblyMilliseconds": 0.042334, "factorizationMilliseconds": 0.164209, "preprocessingMilliseconds": 0.206543, "oneHeatQueryMilliseconds": 0.012416, "meanReusedHeatQueryMilliseconds": 0.011411375, "dijkstraQueryMilliseconds": 0.011119, "heatResidual": 2.371243464e-16, "poissonResidual": 3.81412845e-15},
+    {"majorSegments": 40, "minorSegments": 16, "vertices": 640, "faces": 1280, "meshMilliseconds": 0.383042, "operatorAssemblyMilliseconds": 0.105625, "factorizationMilliseconds": 0.559667, "preprocessingMilliseconds": 0.665292, "oneHeatQueryMilliseconds": 0.051833, "meanReusedHeatQueryMilliseconds": 0.0550105, "dijkstraQueryMilliseconds": 0.04552371429, "heatResidual": 4.182361656e-16, "poissonResidual": 1.869527671e-14},
+    {"majorSegments": 80, "minorSegments": 32, "vertices": 2560, "faces": 5120, "meshMilliseconds": 1.340167, "operatorAssemblyMilliseconds": 0.403917, "factorizationMilliseconds": 4.052125, "preprocessingMilliseconds": 4.456042, "oneHeatQueryMilliseconds": 0.256042, "meanReusedHeatQueryMilliseconds": 0.265952875, "dijkstraQueryMilliseconds": 0.2073332857, "heatResidual": 4.326542501e-16, "poissonResidual": 2.76504694e-14},
+    {"majorSegments": 160, "minorSegments": 64, "vertices": 10240, "faces": 20480, "meshMilliseconds": 5.778584, "operatorAssemblyMilliseconds": 1.666375, "factorizationMilliseconds": 23.013834, "preprocessingMilliseconds": 24.680209, "oneHeatQueryMilliseconds": 1.159375, "meanReusedHeatQueryMilliseconds": 1.224, "dijkstraQueryMilliseconds": 0.8900774286, "heatResidual": 1.593759937e-16, "poissonResidual": 1.396609158e-13},
+    {"majorSegments": 320, "minorSegments": 128, "vertices": 40960, "faces": 81920, "meshMilliseconds": 31.747, "operatorAssemblyMilliseconds": 5.91475, "factorizationMilliseconds": 162.351417, "preprocessingMilliseconds": 168.266167, "oneHeatQueryMilliseconds": 5.681625, "meanReusedHeatQueryMilliseconds": 5.86947925, "dijkstraQueryMilliseconds": 3.940851143, "heatResidual": 8.229776087e-16, "poissonResidual": 3.31481481e-13}
   ]
 }

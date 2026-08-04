@@ -4,18 +4,18 @@
 #include "geodesic/path.hpp"
 #include "geodesic/procedural.hpp"
 
-#ifdef GEODESIC_HAS_CUDA
-#include "geodesic/cuda_solver.hpp"
-#endif
-
 #include <Eigen/Core>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <numbers>
 #include <set>
@@ -190,16 +190,27 @@ void testDijkstraBaseline() {
 }
 
 void testComplexCurvedWorldAndAuthoredRoutes() {
-  const geodesic::PlanetOptions options{4};
+  geodesic::TorusOptions options;
   const geodesic::TriangleMesh first = geodesic::makeCurvedWorld(options);
   const geodesic::TriangleMesh second = geodesic::makeCurvedWorld(options);
-  CHECK(first.vertices().size() == 2562U);
-  CHECK(first.faces().size() == 5120U);
+  CHECK(first.vertices().size() == 10240U);
+  CHECK(first.faces().size() == 20480U);
+  CHECK(first.edges().size() == 30720U);
   CHECK(first.vertices().size() == second.vertices().size());
   CHECK(first.faces().size() == second.faces().size());
-  for (geodesic::Index vertex = 0; vertex < first.vertices().size(); vertex += 97U) {
+  for (geodesic::Index vertex = 0; vertex < first.vertices().size(); ++vertex) {
     CHECK((first.vertices()[vertex].position - second.vertices()[vertex].position).norm() < 1e-15);
   }
+
+  const geodesic::Index lastMajorStart =
+      static_cast<geodesic::Index>((options.majorSegments - 1) * options.minorSegments);
+  const geodesic::Index lastMinor = static_cast<geodesic::Index>(options.minorSegments - 1);
+  const geodesic::Triangle& wrappedMajor = first.faces()[2U * lastMajorStart].vertices;
+  CHECK(wrappedMajor[0] == lastMajorStart);
+  CHECK(wrappedMajor[1] == 0U);
+  const geodesic::Triangle& wrappedMinor = first.faces()[2U * lastMinor].vertices;
+  CHECK(wrappedMinor[0] == lastMinor);
+  CHECK(wrappedMinor[2] == static_cast<geodesic::Index>(options.minorSegments));
 
   std::string reason;
   CHECK(first.validateManifold(&reason));
@@ -207,27 +218,57 @@ void testComplexCurvedWorldAndAuthoredRoutes() {
   const long long eulerCharacteristic = static_cast<long long>(first.vertices().size()) -
                                         static_cast<long long>(first.edges().size()) +
                                         static_cast<long long>(first.faces().size());
-  CHECK(eulerCharacteristic == 2);
+  CHECK(eulerCharacteristic == 0);
+  const long long genus = 1 - eulerCharacteristic / 2;
+  CHECK(genus == 1);
 
-  double minimumRadius = std::numeric_limits<double>::infinity();
-  double maximumRadius = 0.0;
-  geodesic::Vec3 minimum = geodesic::Vec3::Constant(std::numeric_limits<double>::infinity());
-  geodesic::Vec3 maximum = geodesic::Vec3::Constant(-std::numeric_limits<double>::infinity());
+  std::vector<geodesic::Vec3> ringCenters(static_cast<std::size_t>(options.majorSegments),
+                                          geodesic::Vec3::Zero());
+  for (int major = 0; major < options.majorSegments; ++major) {
+    for (int minor = 0; minor < options.minorSegments; ++minor) {
+      const geodesic::Index vertex =
+          static_cast<geodesic::Index>(major * options.minorSegments + minor);
+      ringCenters[static_cast<std::size_t>(major)] += first.vertices()[vertex].position;
+    }
+    ringCenters[static_cast<std::size_t>(major)] /= static_cast<double>(options.minorSegments);
+  }
+
+  double minimumCenterRadius = std::numeric_limits<double>::infinity();
+  double maximumTubeRadius = 0.0;
+  std::vector<double> tubeRadii(static_cast<std::size_t>(options.majorSegments), 0.0);
   for (geodesic::Index vertex = 0; vertex < first.vertices().size(); ++vertex) {
     const geodesic::Vec3& point = first.vertices()[vertex].position;
     CHECK(point.allFinite());
-    minimumRadius = std::min(minimumRadius, point.norm());
-    maximumRadius = std::max(maximumRadius, point.norm());
-    minimum = minimum.cwiseMin(point);
-    maximum = maximum.cwiseMax(point);
     CHECK(first.vertexNormal(vertex).allFinite());
+    const std::size_t major = vertex / static_cast<geodesic::Index>(options.minorSegments);
+    const geodesic::Vec3 outward = point - ringCenters[major];
+    maximumTubeRadius = std::max(maximumTubeRadius, outward.norm());
+    tubeRadii[major] = std::max(tubeRadii[major], outward.norm());
+    CHECK(first.vertexNormal(vertex).dot(outward.normalized()) > 0.65);
   }
-  CHECK(minimumRadius > 0.6);
-  CHECK(maximumRadius / minimumRadius > 1.7);
-  const geodesic::Vec3 extents = maximum - minimum;
-  CHECK(extents.maxCoeff() / extents.minCoeff() > 1.35);
+  for (const geodesic::Vec3& center : ringCenters) {
+    minimumCenterRadius = std::min(minimumCenterRadius, std::hypot(center.x(), center.y()));
+  }
+  CHECK(minimumCenterRadius - maximumTubeRadius > 0.24);
+  const int localSectionWindow = options.majorSegments / 6;
+  for (int firstMajor = 0; firstMajor < options.majorSegments; ++firstMajor) {
+    for (int secondMajor = firstMajor + 1; secondMajor < options.majorSegments; ++secondMajor) {
+      const int directSeparation = secondMajor - firstMajor;
+      const int periodicSeparation =
+          std::min(directSeparation, options.majorSegments - directSeparation);
+      if (periodicSeparation <= localSectionWindow) {
+        continue;
+      }
+      const double centerDistance = (ringCenters[static_cast<std::size_t>(firstMajor)] -
+                                     ringCenters[static_cast<std::size_t>(secondMajor)])
+                                        .norm();
+      CHECK(centerDistance > tubeRadii[static_cast<std::size_t>(firstMajor)] +
+                                 tubeRadii[static_cast<std::size_t>(secondMajor)]);
+    }
+  }
 
   double maximumAspectRatio = 0.0;
+  double minimumAngle = std::numbers::pi;
   for (geodesic::Index face = 0; face < first.faces().size(); ++face) {
     CHECK(std::isfinite(first.faceArea(face)));
     CHECK(first.faceArea(face) > 1e-10);
@@ -243,26 +284,46 @@ void testComplexCurvedWorldAndAuthoredRoutes() {
         std::max({edge01.squaredNorm(), edge12.squaredNorm(), edge20.squaredNorm()});
     maximumAspectRatio =
         std::max(maximumAspectRatio, longestSquaredEdge / (2.0 * first.faceArea(face)));
-    const geodesic::Vec3 centroid =
-        (first.vertices()[triangle[0]].position + first.vertices()[triangle[1]].position +
-         first.vertices()[triangle[2]].position) /
-        3.0;
-    CHECK(first.faceNormal(face).dot(centroid) > 0.0);
+    const std::array<double, 3> lengths{edge12.norm(), edge20.norm(), edge01.norm()};
+    for (std::size_t corner = 0; corner < 3U; ++corner) {
+      const double adjacentFirst = lengths[(corner + 1U) % 3U];
+      const double adjacentSecond = lengths[(corner + 2U) % 3U];
+      const double opposite = lengths[corner];
+      const double cosine = std::clamp(
+          (adjacentFirst * adjacentFirst + adjacentSecond * adjacentSecond - opposite * opposite) /
+              (2.0 * adjacentFirst * adjacentSecond),
+          -1.0, 1.0);
+      minimumAngle = std::min(minimumAngle, std::acos(cosine));
+    }
+    for (const geodesic::Index vertex : triangle) {
+      CHECK(vertex < first.vertices().size());
+    }
   }
-  CHECK(maximumAspectRatio < 4.0);
+  CHECK(maximumAspectRatio < 3.6);
+  CHECK(minimumAngle * 180.0 / std::numbers::pi > 18.0);
 
-  const geodesic::Index source = geodesic::selectCurvedWorldBeacon(first);
+  const geodesic::DiscreteOperators operators = geodesic::assembleOperators(first);
+  CHECK((operators.lumpedMass.array() > 0.0).all());
+  CHECK((operators.laplacian - geodesic::SparseMatrix(operators.laplacian.transpose())).norm() <
+        1e-11);
+  CHECK((operators.laplacian * geodesic::Vector::Ones(operators.laplacian.rows())).norm() < 1e-10);
+
+  const geodesic::Index source = geodesic::selectCurvedWorldBeacon(first, options);
+  CHECK(source == geodesic::selectCurvedWorldBeacon(second, options));
   geodesic::HeatMethodSolver solver(first);
   const geodesic::HeatMethodResult heat = solver.compute(source);
   CHECK(heat.heatReport.converged);
   CHECK(heat.poissonReport.converged);
   CHECK(heat.heatReport.relativeResidual < 1e-9);
   CHECK(heat.poissonReport.relativeResidual < 1e-9);
+  CHECK(heat.distance.allFinite());
+  CHECK((heat.distance.array() >= 0.0).all());
+  checkNear(heat.distance[static_cast<int>(source)], 0.0, 1e-12);
   const geodesic::DijkstraResult dijkstra = geodesic::edgeDijkstra(first, source);
   const std::vector<geodesic::WebRoutePreset> routes =
-      geodesic::buildCurvedWorldRoutePresets(first, solver, heat, dijkstra, source);
+      geodesic::buildCurvedWorldRoutePresets(first, solver, heat, dijkstra, source, options);
   CHECK(routes.size() == 3U);
-  const std::array<std::string, 3> expectedIds{"ridge-crossing", "saddle-pass", "basin-rim"};
+  const std::array<std::string, 3> expectedIds{"ridge-crossing", "inner-saddle-pass", "basin-rim"};
   std::set<geodesic::Index> startingFaces;
   for (std::size_t index = 0; index < routes.size(); ++index) {
     const geodesic::WebRoutePreset& route = routes[index];
@@ -283,6 +344,9 @@ void testComplexCurvedWorldAndAuthoredRoutes() {
     CHECK(route.edgeDijkstraRouteLength > route.ambientChordLength);
     CHECK(route.tracedHeatMethodRouteLength > route.ambientChordLength);
     CHECK(route.tracedHeatMethodRouteLength <= 1.25 * route.edgeDijkstraRouteLength);
+    const std::vector<geodesic::Index> reconstructed =
+        geodesic::reconstructVertexPath(dijkstra, route.dijkstraStartVertex, source);
+    CHECK(reconstructed == route.edgeVertices);
   }
   for (std::size_t firstRoute = 0; firstRoute < routes.size(); ++firstRoute) {
     const geodesic::Vec3 firstStart =
@@ -290,11 +354,40 @@ void testComplexCurvedWorldAndAuthoredRoutes() {
     for (std::size_t secondRoute = firstRoute + 1U; secondRoute < routes.size(); ++secondRoute) {
       const geodesic::Vec3 secondStart =
           geodesic::interpolateSurfacePoint(first, routes[secondRoute].start);
-      CHECK((firstStart - secondStart).norm() > 0.4);
+      CHECK((firstStart - secondStart).norm() > 0.7);
       CHECK(std::abs(routes[firstRoute].tracedHeatMethodRouteLength -
-                     routes[secondRoute].tracedHeatMethodRouteLength) > 0.01);
+                     routes[secondRoute].tracedHeatMethodRouteLength) > 0.04);
     }
   }
+}
+
+std::string readFile(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw TestFailure("could not read deterministic export fixture");
+  }
+  return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
+void testDeterministicWebExport() {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "geodesic-torus-export-test";
+  const std::filesystem::path firstDirectory = root / "first";
+  const std::filesystem::path secondDirectory = root / "second";
+  std::filesystem::remove_all(root);
+
+  geodesic::WebExportOptions options;
+  options.torus.majorSegments = 80;
+  options.torus.minorSegments = 32;
+  const geodesic::WebExportReport first = geodesic::exportCurvedWorld(firstDirectory, options);
+  const geodesic::WebExportReport second = geodesic::exportCurvedWorld(secondDirectory, options);
+  CHECK(first.vertexCount == 2560U);
+  CHECK(first.faceCount == 5120U);
+  CHECK(first.sourceVertex == second.sourceVertex);
+  CHECK(first.routePresets.size() == 3U);
+  CHECK(readFile(first.binaryPath) == readFile(second.binaryPath));
+  CHECK(readFile(first.metadataPath) == readFile(second.metadataPath));
+  std::filesystem::remove_all(root);
 }
 
 void testMalformedAndDegenerateMeshes() {
@@ -322,29 +415,6 @@ void testMalformedAndDegenerateMeshes() {
   CHECK(rejected);
 }
 
-#ifdef GEODESIC_HAS_CUDA
-void testCudaAgreementWhenDeviceAvailable() {
-  if (!geodesic::cudaDeviceAvailable()) {
-    std::cout << "[SKIP] CUDA agreement (no device)\n";
-    return;
-  }
-  const geodesic::TriangleMesh mesh = geodesic::makeIcosphere(2);
-  const geodesic::DiscreteOperators operators = geodesic::assembleOperators(mesh);
-  geodesic::SparseMatrix heatMatrix = operators.suggestedTimeStep * operators.laplacian;
-  for (int i = 0; i < operators.lumpedMass.size(); ++i) {
-    heatMatrix.coeffRef(i, i) += operators.lumpedMass[i];
-  }
-  geodesic::Vector rhs = geodesic::Vector::Zero(heatMatrix.rows());
-  rhs[0] = 1.0;
-  geodesic::CudaPcgSolver gpu(heatMatrix);
-  const geodesic::CudaSolveResult gpuResult = gpu.solve(rhs);
-  Eigen::SimplicialLDLT<geodesic::SparseMatrix> cpu(heatMatrix);
-  const geodesic::Vector cpuResult = cpu.solve(rhs);
-  CHECK(gpuResult.report.converged);
-  CHECK((gpuResult.solution - cpuResult).norm() / cpuResult.norm() < 1e-7);
-}
-#endif
-
 } // namespace
 
 int main() {
@@ -359,10 +429,8 @@ int main() {
       {"direct versus iterative", testDirectIterativeAgreement},
       {"Dijkstra baseline", testDijkstraBaseline},
       {"complex curved world and authored routes", testComplexCurvedWorldAndAuthoredRoutes},
+      {"deterministic web export", testDeterministicWebExport},
       {"malformed and degenerate meshes", testMalformedAndDegenerateMeshes},
-#ifdef GEODESIC_HAS_CUDA
-      {"CPU versus CUDA", testCudaAgreementWhenDeviceAvailable},
-#endif
   };
 
   std::size_t passed = 0;

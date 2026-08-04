@@ -16,6 +16,7 @@
     "check": "npm run format:check && npm run lint && npm test && npm run build"
   },
   "dependencies": {
+    "@fontsource/stix-two-text": "^5.2.8",
     "katex": "^0.16.22",
     "three": "^0.179.1"
   },

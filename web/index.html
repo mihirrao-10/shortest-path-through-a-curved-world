@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="An interactive C++ exploration of how heat reveals geodesic paths across a complex curved surface."
+      content="A CPU-only C++20 Heat Method implementation with an interactive toroidal surface, measured routes, and accessible mathematics."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -14,14 +14,17 @@
     />
     <meta
       property="og:description"
-      content="Choose a route, release heat, and trace distance across a complex curved surface."
+      content="Orbit a generated torus, release heat, and compare an ambient chord, edge Dijkstra, and a traced surface path."
     />
     <meta property="og:type" content="website" />
     <meta
       property="og:url"
       content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/"
     />
-    <meta property="og:image" content="project-preview.png" />
+    <meta
+      property="og:image"
+      content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/project-preview.png"
+    />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <title>The Shortest Path Through a Curved World</title>
   </head>
@@ -97,11 +100,36 @@
             <canvas
               id="world-canvas"
               tabindex="0"
-              aria-label="A triangulated curved world with a destination beacon. Press Enter to select the default ridge-crossing route."
+              aria-label="An interactive triangulated torus with a heat source and selected route start"
+              aria-describedby="world-instructions scene-caption"
             ></canvas>
             <div class="stage-vignette" aria-hidden="true"></div>
+            <div class="stage-controls" aria-label="View controls">
+              <button id="explore-view" type="button" aria-pressed="false">
+                Explore view
+              </button>
+              <button id="reset-view" type="button">Reset view</button>
+              <button id="focus-beacon" type="button">Focus beacon</button>
+              <button id="focus-route-start" type="button">
+                Focus route start
+              </button>
+            </div>
+            <p class="stage-hint">
+              Drag to orbit. Use two fingers after entering Explore view. Pinch
+              to zoom.
+            </p>
+            <p id="world-instructions" class="sr-only">
+              Drag with a mouse or one finger to orbit. Enter Explore view to
+              use two-finger trackpad motion for orbiting and pinch for zoom.
+              Arrow keys orbit, plus and minus zoom, R resets the view, and
+              Escape exits Explore view. The Reset view, Focus beacon, and Focus
+              route start buttons provide the same essential actions.
+            </p>
+            <p class="source-key">
+              <i aria-hidden="true"></i> Amber marker: heat source
+            </p>
             <p id="scene-caption" class="scene-caption" aria-live="polite">
-              Choose one of the three authored surface routes.
+              Choose a native-authored route, then orbit to inspect both ends.
             </p>
             <div id="loading" class="loading" role="status">
               <span aria-hidden="true"></span>
@@ -130,12 +158,12 @@
                 The Shortest Path Through a Curved World
               </h1>
               <p class="subtitle">
-                How heat reveals a route across a folded surface.
+                How heat reconstructs distance on a triangulated torus.
               </p>
               <p class="lead">
-                An explorer stands on an uneven world. A beacon waits across its
-                ridges, basin, and narrow pass. Which surface path gets home
-                first?
+                An explorer stands on a folded ring-shaped world. An amber
+                beacon waits across its ridge, inner throat, and basin. What is
+                the shortest route that never leaves the surface?
               </p>
               <a class="scroll-cue" href="#straight-line"
                 >Follow the question <span aria-hidden="true">↓</span></a
@@ -151,11 +179,30 @@
           >
             <div class="chapter-copy">
               <p class="act-label">I · The tempting answer</p>
-              <h2 id="straight-title">The ambient chord cheats.</h2>
+              <h2 id="straight-title">Why not draw a straight line?</h2>
               <p>
-                A straight segment is shortest in the surrounding 3D space, but
-                it cuts through the world. The explorer must stay on the
-                surface, so the admissible geometry is different.
+                The torus is a two-dimensional surface embedded in ordinary
+                three-dimensional space. That surrounding room is the
+                <em>ambient space</em>. A straight line is allowed to move
+                anywhere in that room, even where the torus is absent.
+              </p>
+              <p
+                class="equation equation--compact"
+                data-math="c(s)=(1-s)p+sq,\qquad 0\le s\le 1"
+              ></p>
+              <p>
+                This segment is the <em>ambient chord</em> from start
+                <span data-math="p"></span> to beacon
+                <span data-math="q"></span>. It is shortest in Euclidean 3D, but
+                on a torus it can leave the surface, cut through the tube, or
+                cross empty space inside the hole.
+              </p>
+              <p>
+                A <em>surface path</em> is a continuous curve
+                <span data-math="\gamma"></span> for which every point
+                <span data-math="\gamma(t)"></span> lies on the torus. Such a
+                path is <em>admissible</em>, meaning it is a route the explorer
+                is allowed to walk. The chord usually is not.
               </p>
               <div class="distance-key" aria-label="Distance comparison">
                 <span><i class="ambient-swatch"></i> Ambient chord</span>
@@ -176,16 +223,32 @@
           >
             <div class="chapter-copy">
               <p class="act-label">II · Triangle mesh and Dijkstra</p>
-              <h2 id="triangles-title">A curved world, represented locally.</h2>
+              <h2 id="triangles-title">How can a computer hold the torus?</h2>
               <p>
-                Oriented triangles approximate the unequal lobes, strong ridge,
-                deep basin, saddle, and compressed channel. Each face is flat;
-                their connectivity carries the global shape.
+                A triangle mesh stores <em>vertices</em>, the sampled points;
+                <em>edges</em>, the links between them; and triangular
+                <em>faces</em>, the local surface pieces. Every face is flat,
+                while wrapped connectivity in both toroidal directions
+                approximates one closed curved surface.
               </p>
               <p>
-                Dijkstra supplies a useful baseline by walking only along mesh
-                edges. Its route is intrinsic to the edge graph, but its turns
-                inherit graph directions and can be biased by triangulation.
+                More, better-shaped triangles usually reduce discretization
+                error, but increase assembly, factorization, rendering, and
+                storage costs. Thin or badly angled triangles also make
+                cotangent operators less reliable.
+              </p>
+              <p>
+                The inner throat is <em>saddle-like</em>: along two tangent
+                directions, the surface bends in opposite ways. That geometric
+                description is visible in the generated shape; this project does
+                not claim a separate numerical Gaussian-curvature computation.
+              </p>
+              <p>
+                Edge Dijkstra sees only the graph of vertices and edges. It
+                finds the exact shortest route in that graph, but it cannot cut
+                across a triangle interior. Its result can zigzag or change with
+                the available edge directions, so it is a baseline rather than
+                the continuous surface answer.
               </p>
               <p class="margin-note">
                 The edge route is not an exact continuous geodesic on the
@@ -205,9 +268,12 @@
               <p class="act-label">III · Choose a route</p>
               <h2 id="route-choice-title">Three starts, one beacon.</h2>
               <p>
-                Each authored start probes a different feature of the same
-                generated surface. All three reuse one beacon, one Heat Method
-                distance field, and one Dijkstra predecessor tree.
+                C++ authors each start as a face plus barycentric coordinates
+                near a named torus feature. All three reuse one beacon, one Heat
+                Method distance field, and one Dijkstra predecessor tree. The
+                exporter rejects any trace that misses the source, invokes
+                fallback, duplicates another start, or produces an implausible
+                measurement.
               </p>
 
               <div
@@ -232,15 +298,15 @@
                     <small>Climb across the strongest crest</small>
                   </button>
                   <button
-                    id="route-saddle-pass"
+                    id="route-inner-saddle-pass"
                     class="route-button"
                     type="button"
-                    data-route-id="saddle-pass"
+                    data-route-id="inner-saddle-pass"
                     aria-pressed="false"
                     aria-current="false"
                   >
-                    <span>Saddle pass</span>
-                    <small>Thread the low pass between lobes</small>
+                    <span>Inner saddle pass</span>
+                    <small>Thread the saddle-like torus throat</small>
                   </button>
                   <button
                     id="route-basin-rim"
@@ -323,8 +389,9 @@
               <h2 id="heat-title">Warm the beacon for an instant.</h2>
               <p>
                 Heat begins at the shared source, then diffuses through the
-                surface. It bends around the ridge, spreads into the basin, and
-                passes through the neck because it cannot leave the mesh.
+                connected torus. It travels around the tube, through the inner
+                region, and across the outer relief because the discrete
+                equation has no route through ambient space.
               </p>
               <p class="revelation">Can the flow of heat reveal distance?</p>
               <button id="release-button" class="release-button" type="button">
@@ -347,10 +414,12 @@
               <p class="act-label">V · Read the direction field</p>
               <h2 id="direction-title">Warmth becomes direction.</h2>
               <p>
-                On each face, heat values form a local slope. Reverse and
-                normalize its gradient to keep direction while discarding
-                magnitude. A Poisson solve then integrates those local
-                directions into one global distance field.
+                On each face, piecewise-linear heat values form a constant local
+                slope. The heat gradient points toward the hot source; negating
+                it points outward in the direction of increasing distance.
+                Normalizing keeps that direction while discarding the rapid
+                decay in magnitude. The route ultimately follows the
+                reconstructed distance field in the opposite direction.
               </p>
               <ol class="method-stages">
                 <li>
@@ -376,8 +445,11 @@
                 </li>
               </ol>
               <p>
-                Tracing that field downhill across faces yields an approximate
-                surface path back to the beacon.
+                Those facewise directions need not fit one scalar field
+                perfectly. A Poisson solve finds the distance-like field whose
+                gradient agrees with them as closely as the discretization
+                allows. Tracing that field downhill across face interiors then
+                yields an approximate route to the beacon.
               </p>
             </div>
           </section>
@@ -390,18 +462,55 @@
           >
             <div class="chapter-copy chapter-copy--wide">
               <p class="act-label">VI · Mathematics</p>
-              <h2 id="math-title">Length is intrinsic.</h2>
+              <h2 id="math-title">What does shortest mean on a surface?</h2>
               <p>
-                A surface metric <span data-math="g"></span> measures tangent
-                motion. The length of a constrained curve is
+                Begin with an admissible route
+                <span data-math="\gamma:[0,1]\to M"></span>. The symbol
+                <span data-math="M"></span> names the torus, and
+                <span data-math="\gamma(t)"></span> is the explorer's current
+                point at parameter value <span data-math="t"></span>.
               </p>
               <p
                 class="equation equation--standalone"
-                data-math="L(\gamma)=\int_0^1\sqrt{\dot{\gamma}(t)^{\mathsf T}g_{\gamma(t)}\dot{\gamma}(t)}\,dt"
+                data-math="L(\gamma)=\int_0^1\lVert\gamma'(t)\rVert\,dt"
               ></p>
               <p>
-                Geodesic distance is the infimum of this length over all
-                surface-constrained paths joining the two points.
+                Here <span data-math="\gamma'(t)"></span> is tangent velocity,
+                its norm is instantaneous speed, and the integral accumulates
+                all infinitesimal lengths. As a sanity check, a constant-speed
+                straight segment in a flat plane has length equal to ordinary
+                endpoint distance. On the torus, the curve must also satisfy the
+                surface constraint.
+              </p>
+              <p>
+                More generally, a surface metric
+                <span data-math="g"></span> tells us how tangent motion is
+                measured at each point:
+              </p>
+              <p
+                class="equation equation--standalone"
+                data-math="L(\gamma)=\int_0^1\sqrt{\gamma'(t)^{\mathsf T}g_{\gamma(t)}\gamma'(t)}\,dt"
+              ></p>
+              <p>
+                The matrix <span data-math="g_{\gamma(t)}"></span> is the metric
+                at the current point. It converts a tangent velocity into
+                squared surface speed. The square root gives an infinitesimal
+                length, and integration adds those pieces along the full route.
+                The triangle mesh approximates this smooth geometry, so its
+                numerical lengths inherit discretization error.
+              </p>
+              <p
+                class="equation equation--standalone"
+                data-math="d_M(p,q)=\inf_{\substack{\gamma(0)=p,\,\gamma(1)=q\\\gamma(t)\in M}}L(\gamma)"
+              ></p>
+              <p>
+                The <em>infimum</em> is the best length approached by all legal
+                surface paths from <span data-math="p"></span> to
+                <span data-math="q"></span>. A <em>geodesic</em> is locally
+                straight according to the surface's own geometry. It need not
+                look straight from the ambient room. The rendered trace is a
+                numerical approximation to this ideal object, not an exact
+                continuous geodesic.
               </p>
 
               <div
@@ -411,22 +520,34 @@
                 <article>
                   <span>01</span>
                   <h3>Ambient chord</h3>
-                  <p>The straight 3D segment may pass through the world.</p>
+                  <p>Movement is allowed anywhere in surrounding 3D space.</p>
                 </article>
                 <article>
                   <span>02</span>
                   <h3>Edge Dijkstra</h3>
-                  <p>The shortest route is restricted to mesh edges.</p>
+                  <p>Movement is allowed only along the mesh-edge graph.</p>
                 </article>
                 <article>
                   <span>03</span>
-                  <h3>Surface trace</h3>
-                  <p>The reconstructed path crosses triangle interiors.</p>
+                  <h3>Heat trace</h3>
+                  <p>
+                    Movement crosses triangle interiors on the mesh surface.
+                  </p>
                 </article>
               </div>
               <p class="margin-note">
-                The selected-route panel reports all three lengths from the
-                native export. They answer different constrained problems.
+                The three reported numbers answer different constrained
+                problems. Comparing their domains matters as much as comparing
+                their magnitudes.
+              </p>
+
+              <h3 class="math-subheading">
+                The Heat Method, one stage at a time
+              </h3>
+              <p>
+                The method does not search through complete paths. It first asks
+                how a very brief pulse spreads from the source, then turns that
+                local response into a global distance-like field.
               </p>
 
               <div class="equation-step">
@@ -434,12 +555,23 @@
                 <div>
                   <p class="equation" data-math="(M+tL)u=M\delta"></p>
                   <p>
-                    <strong>Diffuse briefly.</strong>
-                    <span data-math="M"></span> stores vertex area,
-                    <span data-math="L\approx-\Delta"></span> is the
-                    positive-semidefinite stiffness matrix, and
-                    <span data-math="t=h^2"></span> ties diffusion time to mean
-                    edge length.
+                    <strong>Create a brief heat impulse.</strong> The vector
+                    <span data-math="\delta"></span> identifies the source. The
+                    lumped mass matrix <span data-math="M"></span> distributes
+                    vertex values according to surrounding area. The stiffness
+                    matrix <span data-math="L"></span>
+                    discretizes the positive-semidefinite Laplace-Beltrami
+                    operator, and
+                    <span data-math="t"></span> is a short diffusion time. The
+                    solution <span data-math="u"></span> is temperature.
+                  </p>
+                  <p>
+                    Choosing <span data-math="t\approx h^2"></span>, where
+                    <span data-math="h"></span> is mean edge length, ties the
+                    pulse to mesh scale. At short times, points reached sooner
+                    tend to be closer along the surface. Too much diffusion
+                    blurs local distance information; too little magnifies
+                    discretization noise.
                   </p>
                 </div>
               </div>
@@ -452,10 +584,14 @@
                     data-math="X=-\frac{\nabla u}{\lVert\nabla u\rVert}"
                   ></p>
                   <p>
-                    <strong>Keep direction.</strong> Each triangle has a
-                    constant piecewise-linear heat gradient. The normalized
-                    field <span data-math="X"></span> points approximately in
-                    the direction in which distance increases.
+                    <strong>Read direction.</strong> Each face has a constant
+                    piecewise-linear heat gradient. Since heat is largest near
+                    the source, <span data-math="\nabla u"></span> points toward
+                    hotter values. The minus sign turns it outward, so
+                    <span data-math="X"></span> aligns with increasing distance.
+                    Normalization removes decay in magnitude while retaining
+                    direction. The final route later follows decreasing distance
+                    back toward the source.
                   </p>
                 </div>
               </div>
@@ -468,10 +604,38 @@
                     data-math="L\phi=b_X,\qquad (b_X)_i=\sum_f A_f\,\nabla b_i\!\cdot X_f"
                   ></p>
                   <p>
-                    <strong>Integrate the directions.</strong> The Poisson solve
-                    finds the scalar field <span data-math="\phi"></span> whose
-                    gradient best matches <span data-math="X"></span>. Pinning
-                    the source removes the constant null space.
+                    <strong>Reconstruct distance.</strong> Independent facewise
+                    arrows may not be the gradient of one globally consistent
+                    scalar function. The load <span data-math="b_X"></span> is
+                    their weak divergence. The Poisson solve finds a scalar
+                    field <span data-math="\phi"></span> whose gradient best
+                    agrees with <span data-math="X"></span> over the mesh.
+                  </p>
+                  <p>
+                    Adding a constant to every value would leave all gradients
+                    unchanged, so the system otherwise has one arbitrary degree
+                    of freedom. The implementation pins one reference value,
+                    then shifts the solved field so the source distance is zero.
+                    This plain reference choice is often called gauge fixing.
+                  </p>
+                </div>
+              </div>
+
+              <div class="equation-step">
+                <span class="equation-number">4</span>
+                <div>
+                  <p
+                    class="equation"
+                    data-math="\dot\gamma\propto-\nabla\phi"
+                  ></p>
+                  <p>
+                    <strong>Trace across faces.</strong> The native tracer
+                    starts from an authored face and barycentric point, follows
+                    decreasing <span data-math="\phi"></span> to a barycentric
+                    edge crossing, enters the adjacent face, and repeats until
+                    it reaches the source neighborhood. Critical regions can
+                    stop a face tracer, so every published preset is validated
+                    to reach the source without fallback.
                   </p>
                 </div>
               </div>
@@ -485,19 +649,31 @@
                 </div>
                 <p>
                   The weight on an interior edge comes from the two angles
-                  opposite that edge. These local triangle angles assemble the
-                  discrete surface operator, so poor triangle quality can
-                  degrade the approximation.
+                  <span data-math="\alpha_{ij}"></span> and
+                  <span data-math="\beta_{ij}"></span> opposite that shared
+                  edge. These local angles assemble the discrete operator. Poor
+                  triangle quality can therefore degrade the approximation even
+                  when the topology is correct.
                 </p>
               </div>
 
-              <p class="math-caveat">
-                The Heat Method approximates geodesic distance; it does not
-                return an exact polyhedral geodesic. Mesh quality matters,
-                edge-graph Dijkstra has directional bias, and the browser tracer
-                uses a guarded fallback near critical points. CUDA is
-                compile-covered, but no CUDA runtime measurement is claimed.
-              </p>
+              <div class="math-caveat">
+                <h3>What remains approximate</h3>
+                <ul>
+                  <li>The Heat Method result is an approximation.</li>
+                  <li>The triangle mesh discretizes the smooth torus.</li>
+                  <li>A face tracer can encounter critical regions.</li>
+                  <li>Cotangent operators depend on triangle quality.</li>
+                  <li>Dijkstra is restricted to mesh edges.</li>
+                  <li>
+                    A torus can have several nearly equal routes around
+                    different sides.
+                  </li>
+                  <li>
+                    All numerical computation in this project is CPU-only.
+                  </li>
+                </ul>
+              </div>
             </div>
           </section>
 
@@ -512,10 +688,10 @@
               <h2 id="comparison-title">One field, three journeys.</h2>
               <p>
                 Comparison mode draws all three traced Heat Method paths on the
-                same world. Their starts and measurements are distinct, but the
-                source solve remains shared. A restrained x-ray overlay keeps
-                the portions behind the surface readable without changing any
-                traced point.
+                same torus. Their starts and measured lengths are distinct, but
+                the source solve remains shared. A restrained x-ray overlay is
+                used only here to keep hidden path portions readable; ordinary
+                modes preserve surface occlusion.
               </p>
 
               <div
@@ -533,9 +709,9 @@
                     ><i class="route-swatch route-swatch--ridge"></i> Ridge
                     crossing</span
                   >
-                  <span data-route-id="saddle-pass"
-                    ><i class="route-swatch route-swatch--saddle"></i> Saddle
-                    pass</span
+                  <span data-route-id="inner-saddle-pass"
+                    ><i class="route-swatch route-swatch--saddle"></i> Inner
+                    saddle pass</span
                   >
                   <span data-route-id="basin-rim"
                     ><i class="route-swatch route-swatch--basin"></i> Basin
@@ -563,8 +739,8 @@
                         <td data-comparison-metric="dijkstra">Loading</td>
                         <td data-comparison-metric="heat">Loading</td>
                       </tr>
-                      <tr data-route-id="saddle-pass">
-                        <th scope="row">Saddle pass</th>
+                      <tr data-route-id="inner-saddle-pass">
+                        <th scope="row">Inner saddle pass</th>
                         <td data-comparison-metric="ambient">Loading</td>
                         <td data-comparison-metric="dijkstra">Loading</td>
                         <td data-comparison-metric="heat">Loading</td>
@@ -597,10 +773,11 @@
               <p class="act-label">VIII · Scale and implementation</p>
               <h2 id="scale-title">Geometry becomes sparse algebra.</h2>
               <p>
-                Most vertices interact only with their one-ring neighbors.
-                Operator assembly and factorization are preprocessing; new
-                source queries reuse them. The authored branches do not export
-                three redundant distance fields.
+                Most vertices interact only with their one-ring neighbors. Eigen
+                assembles sparse mass and stiffness operators on the CPU.
+                Assembly and factorization are preprocessing; later source
+                queries reuse them. The three authored routes therefore share
+                one distance field rather than exporting redundant solves.
               </p>
               <div
                 id="benchmark-chart"
@@ -616,14 +793,6 @@
               <p id="benchmark-caption" class="margin-note">
                 Loading measured benchmark data.
               </p>
-              <div class="gpu-status" aria-label="GPU benchmark status">
-                <span>CUDA / cuSPARSE</span>
-                <strong>Implemented; runtime measurement unavailable</strong>
-                <p>
-                  No compatible NVIDIA runtime was available for this published
-                  validation, so no GPU timing is claimed.
-                </p>
-              </div>
             </div>
           </section>
 
@@ -659,65 +828,74 @@
           <p class="eyebrow">For the technically curious</p>
           <h2 id="under-title">Under the hood</h2>
           <p>
-            A C++20 geometry engine produces the mesh, operators, distance
-            field, route presets, and exported measurements. This section
-            separates exact implementation facts from numerical approximation.
+            The page is static, but its geometry and numerical fields are not
+            browser inventions. A deterministic native pipeline produces the
+            torus, solves the field, validates the routes, and writes the files
+            rendered here.
           </p>
         </div>
 
         <div class="technical-grid">
           <article>
             <span>01</span>
-            <h3>Procedural world</h3>
+            <h3>C++20 torus generation</h3>
             <p>
-              One deterministic, closed genus-zero mesh combines anisotropic
-              lobes with a ridge, basin, saddle, and narrow channel while
-              remaining suitable for cotangent operators.
+              A periodic parameter grid creates one closed genus-one mesh with
+              no duplicated seam vertices. Analytic winding remains outward on
+              both the outer and inner tube. Native checks cover manifold
+              structure, topology, triangle quality, finite geometry, and
+              deterministic landmarks.
             </p>
           </article>
           <article>
             <span>02</span>
-            <h3>Mesh representation</h3>
+            <h3>Eigen sparse solves</h3>
             <p>
-              An oriented halfedge structure stores faces, edges, twins,
-              incidence, cached one-rings, and boundary state. Construction
-              rejects invalid orientation and degenerate triangles.
+              Lumped areas form the mass matrix, cotangent weights form the
+              symmetric stiffness matrix, and barycentric gradients supply the
+              facewise differential operators. Eigen runs reusable direct and
+              iterative CPU paths and reports relative residuals.
             </p>
           </article>
           <article>
             <span>03</span>
-            <h3>Discrete operators</h3>
+            <h3>Deterministic native export</h3>
             <p>
-              Lumped vertex areas form the mass matrix. Triangle cotangents
-              assemble a symmetric stiffness matrix; barycentric gradients
-              supply scalar gradients and weak divergence loads.
+              The exporter writes compact indexed geometry, adjacency, six heat
+              states, the distance field, Dijkstra distances and predecessors,
+              gradient samples, toroidal route presets, native trace
+              measurements, topology, and residual metadata.
             </p>
           </article>
           <article>
             <span>04</span>
-            <h3>Numerical design</h3>
+            <h3>TypeScript interpretation</h3>
             <p>
-              Eigen supplies reference direct and iterative solve paths with
-              reported relative residuals. Heat and pinned Poisson
-              factorizations are reusable between source queries.
+              TypeScript validates schema version 2, reconstructs the shared
+              graph route, and independently follows the exported scalar field
+              across face interiors for display. It rejects malformed or
+              inconsistent numerical payloads before the scene starts.
             </p>
           </article>
           <article>
             <span>05</span>
-            <h3>Path extraction</h3>
+            <h3>Persistent presentation</h3>
             <p>
-              The tracer follows a piecewise-linear face gradient, transfers
-              across barycentric edge crossings, and stops near the source.
-              Guards can switch to a monotone vertex fallback.
+              Three.js renders one stationary torus while the damped camera
+              orbits it. KaTeX emits HTML and MathML notation. Both libraries
+              are bundled into the static GitHub Pages build, including the
+              local STIX Two Text files used by the prose.
             </p>
           </article>
           <article>
             <span>06</span>
-            <h3>Optional CUDA path</h3>
+            <h3>Numerical and browser tests</h3>
             <p>
-              The optional backend keeps CSR matrices and work vectors resident,
-              using cuSPARSE, cuBLAS, preconditioned conjugate gradients, and
-              custom geometry and update kernels in double precision.
+              Native tests validate topology, operators, residuals, route
+              reconstruction, and byte-for-byte deterministic export. Playwright
+              exercises every route, heat replay, comparison, camera input,
+              accessibility state, responsive stacking, fallback behavior, and
+              dark surfaces.
             </p>
           </article>
         </div>
@@ -740,39 +918,22 @@
               </div>
               <div>
                 <dt>Encoding</dt>
-                <dd>Binary schema v1, log-quantized heat frames</dd>
+                <dd>Binary schema v2, log-quantized heat frames</dd>
               </div>
             </dl>
           </div>
           <div>
             <p class="eyebrow">Limitations</p>
             <p>
-              Approximation error depends on mesh resolution and triangle
-              quality. Dijkstra measures edge-graph distance. The face tracer
-              may use a guarded fallback near critical points. CUDA has compile
-              coverage in its established workflow, but no runtime result is
-              presented without compatible hardware.
+              The surface is discretized, the Heat Method is approximate, and
+              cotangent accuracy depends on triangle quality. Dijkstra is
+              edge-restricted. Face tracing can fail near critical regions,
+              although every published preset is verified without fallback.
+              Distinct routes around a torus can be nearly equal. The project
+              uses CPU computation throughout.
             </p>
           </div>
         </div>
-
-        <figure class="code-figure code-figure--light">
-          <figcaption>
-            From <code>native/src/heat_method.cpp</code>, the field used by all
-            three routes
-          </figcaption>
-          <pre><code><span class="code-type">std::vector&lt;Vec3&gt;</span> gradients =
-    faceGradient(mesh_, operators_.faceGeometry, result.heat);
-
-<span class="code-keyword">for</span> (<span class="code-type">std::size_t</span> face = <span class="code-number">0</span>; face &lt; gradients.size(); ++face) {
-  <span class="code-keyword">const</span> <span class="code-type">double</span> norm = gradients[face].norm();
-  <span class="code-keyword">if</span> (!std::isfinite(norm) || norm &lt;= options_.zeroGradientEpsilon) {
-    ++result.zeroGradientFaces;
-    <span class="code-keyword">continue</span>;
-  }
-  result.directionField[face] = -gradients[face] / norm;
-}</code></pre>
-        </figure>
 
         <div class="references">
           <h3>Primary references</h3>
