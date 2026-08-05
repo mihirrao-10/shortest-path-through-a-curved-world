@@ -4,7 +4,6 @@ import {
   barycentric,
   traceSurfacePath,
   type SurfaceStart,
-  type TracedPath,
 } from "./path-tracer";
 import type {
   RoutePreset,
@@ -14,32 +13,31 @@ import type {
 } from "./world-data";
 
 const INVALID_INDEX = 0xffffffff;
-const DEFAULT_ROUTE: RoutePresetId = "ridge-crossing";
+const HEAT_PATH_COLORS = [0x39ff88, 0x8bffad, 0x1fd66e] as const;
+let activeSceneCount = 0;
+let sceneGeneration = 0;
 
-const ROUTE_COLORS: Record<RoutePresetId, number> = {
-  "ridge-crossing": 0xffbd62,
-  "inner-saddle-pass": 0x78d5c6,
-  "basin-rim": 0xc9afff,
-};
-
-const ACT_CAPTIONS = [
-  "A closed genus-one torus generated and solved by the C++ engine.",
-  "The ambient chord can cross the tube or empty space, so it cannot be walked.",
-  "Dijkstra follows mesh edges and inherits their directional bias.",
-  "Choose a native-authored start at the ridge, inner throat, or basin rim.",
-  "Six exported diffusion states spread over the torus from the amber beacon.",
-  "Depth-tested face arrows and a lifted route follow the reconstructed field.",
-  "Contours show level sets of one Heat Method distance field.",
-  "A restrained x-ray overlay keeps three fallback-free Heat paths readable.",
-  "C++20 and Eigen export geometry, sparse-solve fields, and measured routes.",
-  "Orbit the torus to inspect the approximate surface path from either side.",
-] as const;
+function actCaptions(genus: number): readonly string[] {
+  return [
+    `A closed genus-${genus} surface generated and solved by the C++ engine.`,
+    "The ambient chord can cross the tube or empty space, so it cannot be walked.",
+    "Dijkstra follows mesh edges and inherits their directional bias.",
+    "Choose a native-authored start at the outer ridge, central neck, or basin rim.",
+    "Six exported diffusion states spread over the surface from the amber beacon.",
+    "Depth-tested face arrows and a lifted route follow the reconstructed field.",
+    "Contours show level sets of one Heat Method distance field.",
+    "A restrained x-ray overlay keeps three fallback-free Heat paths readable.",
+    "C++20 and Eigen export geometry, sparse-solve fields, and measured routes.",
+    "Orbit the surface to inspect the approximate path from either side.",
+  ];
+}
 
 interface SceneOptions {
   reducedMotion: boolean;
   onRouteSelected?: (preset: RoutePreset) => void;
   onExploreChange?: (engaged: boolean) => void;
   onCaptionChange?: (caption: string) => void;
+  onHeatStateChange?: (state: "idle" | "animation" | "released") => void;
 }
 
 type RouteVisual = {
@@ -49,7 +47,6 @@ type RouteVisual = {
   ambientLine: THREE.Line;
   dijkstraLine: THREE.Line;
   heatPath: THREE.Mesh;
-  traced: TracedPath;
 };
 
 function vertexVector(
@@ -81,11 +78,11 @@ function interpolateSurfaceStart(
   const point = new THREE.Vector3();
   for (let local = 0; local < 3; local += 1) {
     point.addScaledVector(
-      vertexVector(data, data.indices[3 * preset.startFace + local]!),
-      preset.startBarycentric[local]!,
+      vertexVector(data, data.indices[3 * preset.start.face + local]!),
+      preset.start.barycentric[local]!,
     );
   }
-  return { face: preset.startFace, point };
+  return { face: preset.start.face, point };
 }
 
 function interpolatedNormal(
@@ -123,19 +120,22 @@ function nearestVertexNormal(
   return vertexVector(data.normals, best).normalize();
 }
 
-function liftedTracePoints(
+function liftedNativePathPoints(
   data: WorldData,
-  traced: TracedPath,
+  preset: RoutePreset,
   offset: number,
 ): THREE.Vector3[] {
-  return traced.points.map((point, index) => {
-    const face = traced.faces[index] ?? -1;
-    const normal =
-      face >= 0
-        ? interpolatedNormal(data, face, point)
-        : nearestVertexNormal(data, point);
-    return point.clone().addScaledVector(normal, offset);
-  });
+  const result: THREE.Vector3[] = [];
+  for (let index = 0; index < preset.nativePathCount; index += 1) {
+    const point = new THREE.Vector3().fromArray(
+      data.nativeRoutePoints,
+      3 * (preset.nativePathOffset + index),
+    );
+    result.push(
+      point.addScaledVector(nearestVertexNormal(data, point), offset),
+    );
+  }
+  return result;
 }
 
 function makeMarker(color: number, radius: number): THREE.Group {
@@ -221,6 +221,7 @@ export class WorldScene {
   private readonly reducedMotion: boolean;
   private readonly onRouteSelected?: (preset: RoutePreset) => void;
   private readonly onCaptionChange?: (caption: string) => void;
+  private readonly onHeatStateChange?: SceneOptions["onHeatStateChange"];
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
   private readonly renderer: THREE.WebGLRenderer;
@@ -234,23 +235,23 @@ export class WorldScene {
   private readonly material: THREE.MeshStandardMaterial;
   private readonly mesh: THREE.Mesh;
   private readonly wireframe: THREE.Mesh;
-  private readonly atmosphere: THREE.Mesh;
   private readonly beacon: THREE.Group;
   private readonly explorer: THREE.Group;
   private readonly gradientLines: THREE.LineSegments;
   private readonly routeVisuals = new Map<RoutePresetId, RouteVisual>();
   private readonly resizeObserver: ResizeObserver;
   private readonly worldCenter = new THREE.Vector3();
+  private readonly worldRadius: number;
   private readonly sourcePoint: THREE.Vector3;
   private readonly sourceNormal: THREE.Vector3;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly controls: OrbitController;
   private readonly palette = new Float32Array(256 * 3);
-  private selectedRouteId: RoutePresetId = DEFAULT_ROUTE;
+  private selectedRouteId: RoutePresetId;
   private comparisonVisible = false;
   private activeAct = 0;
-  private heatStarted = false;
+  private heatEnabled = false;
   private heatStartTime = 0;
   private routeReplayStart = 0;
   private routeReplayRevision = 0;
@@ -258,6 +259,7 @@ export class WorldScene {
   private animationFrame = 0;
   private lastFrameTime = performance.now();
   private disposed = false;
+  private lifecycleRegistered = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -271,6 +273,10 @@ export class WorldScene {
     this.reducedMotion = options.reducedMotion;
     this.onRouteSelected = options.onRouteSelected;
     this.onCaptionChange = options.onCaptionChange;
+    this.onHeatStateChange = options.onHeatStateChange;
+    const firstRoute = metadata.routePresets[0];
+    if (!firstRoute) throw new Error("World metadata has no route presets");
+    this.selectedRouteId = firstRoute.id;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -296,6 +302,8 @@ export class WorldScene {
     if (this.geometry.boundingSphere) {
       this.worldCenter.copy(this.geometry.boundingSphere.center);
     }
+    this.worldRadius =
+      this.geometry.boundingSphere?.radius ?? metadata.bounds.radius;
     this.baseColors = this.buildBaseColors();
     this.distanceColors = this.buildDistanceColors(false);
     this.contourColors = this.buildDistanceColors(true);
@@ -321,19 +329,7 @@ export class WorldScene {
       }),
     );
     this.wireframe.scale.setScalar(1.0012);
-    this.atmosphere = new THREE.Mesh(
-      this.geometry,
-      new THREE.MeshBasicMaterial({
-        color: 0x65c8b6,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: 0.035,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    this.atmosphere.scale.setScalar(1.045);
-    this.world.add(this.mesh, this.wireframe, this.atmosphere);
+    this.world.add(this.mesh, this.wireframe);
 
     this.sourcePoint = vertexVector(data, data.sourceVertex);
     this.sourceNormal = vertexVector(
@@ -357,25 +353,34 @@ export class WorldScene {
     this.buildRouteVisuals();
 
     this.scene.add(this.world);
-    this.scene.add(new THREE.HemisphereLight(0xe5f4ef, 0x18201f, 1.7));
-    const key = new THREE.DirectionalLight(0xffead0, 2.0);
+    this.scene.add(new THREE.HemisphereLight(0xdce5e2, 0x141817, 1.65));
+    const key = new THREE.DirectionalLight(0xf4eee5, 1.9);
     key.position.set(3.5, 3.2, 4.8);
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x65d9c5, 1.2);
+    const rim = new THREE.DirectionalLight(0xaab7b4, 0.28);
     rim.position.set(-3.2, 1.2, -2.5);
     this.scene.add(rim);
-    const innerFill = new THREE.PointLight(0x9abeb8, 0.8, 5.5, 1.2);
+    const innerFill = new THREE.PointLight(0x879995, 0.62, 5.5, 1.2);
     innerFill.position.set(0, 0.25, 0.35);
     this.scene.add(innerFill);
 
     this.canvas.dataset.act = "0";
-    this.canvas.dataset.activeRoute = DEFAULT_ROUTE;
+    this.canvas.dataset.activeRoute = this.selectedRouteId;
     this.canvas.dataset.comparison = "false";
     this.canvas.dataset.heatMode = "idle";
+    this.canvas.dataset.routeReplay = "0";
     this.canvas.dataset.worldKind = metadata.mesh.kind;
     this.canvas.dataset.topology = `genus-${metadata.topology.genus}`;
     this.canvas.dataset.vertexCount = String(data.vertexCount);
     this.canvas.dataset.faceCount = String(data.faceCount);
+    this.canvas.dataset.eulerCharacteristic = String(
+      metadata.topology.eulerCharacteristic,
+    );
+    this.canvas.dataset.nativeRoutes = "true";
+    this.canvas.dataset.atmosphere = "false";
+    this.canvas.dataset.ambientColor = "#ff3030";
+    this.canvas.dataset.heatPathColor = "#39ff88";
+    this.canvas.dataset.dijkstraColor = "#f1f1f1";
     this.canvas.dataset.beaconClickable = "true";
     this.canvas.dataset.routeStartClickable = "true";
     this.positionExplorer();
@@ -384,7 +389,7 @@ export class WorldScene {
     this.controls = new OrbitController(
       this.camera,
       this.canvas,
-      this.routePose(DEFAULT_ROUTE),
+      this.routePose(this.selectedRouteId),
       {
         reducedMotion: this.reducedMotion,
         onExploreChange: options.onExploreChange,
@@ -403,13 +408,18 @@ export class WorldScene {
     this.resizeObserver.observe(this.canvas);
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.resize();
+    activeSceneCount += 1;
+    this.lifecycleRegistered = true;
+    this.canvas.dataset.activeScenes = String(activeSceneCount);
+    this.canvas.dataset.sceneGeneration = String(++sceneGeneration);
     if (!document.hidden)
       this.animationFrame = requestAnimationFrame(this.render);
   }
 
   get caption(): string {
-    if (this.comparisonVisible) return ACT_CAPTIONS[7];
-    return ACT_CAPTIONS[this.activeAct] ?? ACT_CAPTIONS[0];
+    const captions = actCaptions(this.metadata.topology.genus);
+    if (this.comparisonVisible) return captions[7]!;
+    return captions[this.activeAct] ?? captions[0]!;
   }
 
   get selectedPreset(): RoutePreset {
@@ -495,13 +505,11 @@ export class WorldScene {
   }
 
   resetJourney(): void {
-    this.heatStarted = false;
-    this.canvas.dataset.heatMode = "idle";
-    delete this.canvas.dataset.heatProgress;
+    this.setHeatEnabled(false);
     this.activeAct = 0;
     this.canvas.dataset.act = "0";
     this.applyColors(this.baseColors);
-    this.selectRoute(DEFAULT_ROUTE);
+    this.selectRoute(this.metadata.routePresets[0]!.id);
     this.resetView();
   }
 
@@ -518,23 +526,45 @@ export class WorldScene {
     wireMaterial.opacity = next === 2 ? 0.22 : next === 8 ? 0.16 : 0;
     this.wireframe.visible = wireMaterial.opacity > 0;
     this.gradientLines.visible = next === 5;
-    if ([0, 1, 2, 3, 8].includes(next)) this.applyColors(this.baseColors);
-    if (next === 4 && !this.heatStarted)
-      this.applyHeatFrame(Math.floor(this.data.heatFrameCount / 2));
-    if ([5, 7, 9].includes(next)) this.applyColors(this.distanceColors);
-    if (next === 6) this.applyColors(this.contourColors);
+    if (next === 4 && this.heatEnabled) {
+      this.applyHeat(1);
+      this.canvas.dataset.heatMode = "released";
+    } else {
+      this.applyNonHeatColors();
+    }
     this.requestStoryPose(next);
     this.applyVisualState();
   }
 
-  releaseHeat(): void {
-    this.heatStarted = true;
+  setHeatEnabled(enabled: boolean): void {
+    this.heatEnabled = enabled;
+    if (!enabled) {
+      this.canvas.dataset.heatMode = "idle";
+      delete this.canvas.dataset.heatProgress;
+      this.applyNonHeatColors();
+      this.onHeatStateChange?.("idle");
+      return;
+    }
     this.heatStartTime = performance.now();
     this.activeAct = 4;
     this.canvas.dataset.act = "4";
-    this.canvas.dataset.heatMode = "animation";
-    this.canvas.dataset.heatProgress = "0";
     this.hideRouteComparison();
+    if (this.reducedMotion) {
+      this.applyHeat(1);
+      this.canvas.dataset.heatMode = "released";
+      this.onHeatStateChange?.("released");
+    } else {
+      this.canvas.dataset.heatMode = "animation";
+      this.canvas.dataset.heatProgress = "0";
+      this.applyHeat(0);
+      this.onHeatStateChange?.("animation");
+    }
+    this.applyVisualState();
+  }
+
+  toggleHeat(): boolean {
+    this.setHeatEnabled(!this.heatEnabled);
+    return this.heatEnabled;
   }
 
   destroy(): void {
@@ -560,29 +590,37 @@ export class WorldScene {
     this.geometry.dispose();
     this.material.dispose();
     (this.wireframe.material as THREE.Material).dispose();
-    (this.atmosphere.material as THREE.Material).dispose();
     this.renderer.dispose();
+    if (this.lifecycleRegistered) {
+      activeSceneCount -= 1;
+      this.lifecycleRegistered = false;
+      this.canvas.dataset.activeScenes = String(activeSceneCount);
+    }
+  }
+
+  private applyNonHeatColors(): void {
+    if ([5, 7, 9].includes(this.activeAct)) {
+      this.applyColors(this.distanceColors);
+    } else if (this.activeAct === 6) {
+      this.applyColors(this.contourColors);
+    } else {
+      this.applyColors(this.baseColors);
+    }
   }
 
   private buildBaseColors(): Float32Array {
     const result = new Float32Array(this.data.vertexCount * 3);
-    const radii = new Float32Array(this.data.vertexCount);
-    let minimumRadius = Number.POSITIVE_INFINITY;
-    let maximumRadius = Number.NEGATIVE_INFINITY;
+    const low = new THREE.Color(0x10282b);
+    const high = new THREE.Color(0x74817d);
     for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
-      const radius = vertexVector(this.data.positions, vertex).length();
-      radii[vertex] = radius;
-      minimumRadius = Math.min(minimumRadius, radius);
-      maximumRadius = Math.max(maximumRadius, radius);
-    }
-    const range = Math.max(maximumRadius - minimumRadius, 1e-9);
-    const low = new THREE.Color(0x102b2e);
-    const high = new THREE.Color(0x748076);
-    for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
-      const radial = (radii[vertex]! - minimumRadius) / range;
-      const normalY = this.data.normals[3 * vertex + 1]!;
+      const x = this.data.positions[3 * vertex]! - this.worldCenter.x;
+      const z = this.data.positions[3 * vertex + 2]! - this.worldCenter.z;
+      const normalZ = this.data.normals[3 * vertex + 2]!;
       const mix = THREE.MathUtils.clamp(
-        0.1 + 0.72 * radial + 0.1 * normalY,
+        0.43 +
+          0.24 * (z / Math.max(this.worldRadius, 1e-9)) +
+          0.16 * normalZ +
+          0.06 * Math.sin((3.1 * x) / Math.max(this.worldRadius, 1e-9)),
         0,
         1,
       );
@@ -636,21 +674,6 @@ export class WorldScene {
 
   private applyColors(source: Float32Array): void {
     this.colors.set(source);
-    this.colorAttribute.needsUpdate = true;
-  }
-
-  private applyHeatFrame(frameIndex: number): void {
-    const frame = this.data.heatFrames[frameIndex];
-    if (!frame) return;
-    for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
-      const paletteIndex = Math.min(
-        255,
-        Math.max(0, Math.round(frame[vertex]! / 257)),
-      );
-      this.colors[3 * vertex] = this.palette[3 * paletteIndex]!;
-      this.colors[3 * vertex + 1] = this.palette[3 * paletteIndex + 1]!;
-      this.colors[3 * vertex + 2] = this.palette[3 * paletteIndex + 2]!;
-    }
     this.colorAttribute.needsUpdate = true;
   }
 
@@ -731,7 +754,7 @@ export class WorldScene {
 
   private buildRouteVisuals(): void {
     const source = vertexVector(this.data.positions, this.data.sourceVertex);
-    for (const preset of this.metadata.routePresets) {
+    this.metadata.routePresets.forEach((preset, routeIndex) => {
       const start = interpolateSurfaceStart(this.data, preset);
       const startNormal = interpolatedNormal(
         this.data,
@@ -741,11 +764,12 @@ export class WorldScene {
       const ambientLine = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([start.point, source]),
         new THREE.LineDashedMaterial({
-          color: 0xd7a8ff,
+          color: 0xff3030,
           dashSize: 0.055,
           gapSize: 0.035,
           transparent: true,
-          opacity: 0.9,
+          opacity: 1,
+          toneMapped: false,
           depthTest: true,
           depthWrite: false,
         }),
@@ -769,24 +793,26 @@ export class WorldScene {
       const dijkstraLine = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(dijkstraPoints),
         new THREE.LineBasicMaterial({
-          color: 0xe0b8ff,
+          color: 0xf1f1f1,
           transparent: true,
           opacity: 1,
+          toneMapped: false,
           depthTest: true,
           depthWrite: false,
         }),
       );
 
-      const traced = traceSurfacePath(this.data, start);
-      if (!traced.reachedSource)
+      const browserTrace = traceSurfacePath(this.data, start);
+      if (!browserTrace.reachedSource)
         throw new Error(
-          `Browser tracer failed for ${preset.id}: ${traced.termination}`,
+          `Browser tracer failed for ${preset.id}: ${browserTrace.termination}`,
         );
       const heatPath = makePathTube(
-        liftedTracePoints(this.data, traced, 0.015),
-        0.009,
-        ROUTE_COLORS[preset.id],
+        liftedNativePathPoints(this.data, preset, 0.015),
+        0.011,
+        HEAT_PATH_COLORS[routeIndex] ?? HEAT_PATH_COLORS[0],
       );
+      heatPath.name = `native-heat-path-${preset.id}`;
       this.routeVisuals.set(preset.id, {
         preset,
         start,
@@ -794,9 +820,8 @@ export class WorldScene {
         ambientLine,
         dijkstraLine,
         heatPath,
-        traced,
       });
-    }
+    });
   }
 
   private positionExplorer(): void {
@@ -830,33 +855,49 @@ export class WorldScene {
       .add(this.sourcePoint)
       .multiplyScalar(0.5);
     const target = this.worldCenter.clone().lerp(midpoint, 0.16);
-    const directions: Record<RoutePresetId, THREE.Vector3> = {
-      "ridge-crossing": new THREE.Vector3(1.45, 0.34, 0.82),
-      "inner-saddle-pass": new THREE.Vector3(-1.05, 0.34, 1.22),
-      "basin-rim": new THREE.Vector3(-0.62, 0.68, 1.38),
-    };
-    const endpointSeparation = visual.start.point.distanceTo(this.sourcePoint);
-    const mobile = window.matchMedia("(max-width: 760px)").matches;
-    const distance = THREE.MathUtils.clamp(
-      7.55 + 0.15 * endpointSeparation + (mobile ? 0.28 : 0),
-      7.72,
-      8.28,
+    const routeIndex = Math.max(
+      0,
+      this.metadata.routePresets.findIndex((preset) => preset.id === routeId),
     );
-    return this.poseFromDirection(target, directions[routeId], distance);
+    const directions = [
+      new THREE.Vector3(0.16, 0.34, 1),
+      new THREE.Vector3(-0.18, 0.3, 1),
+      new THREE.Vector3(0.08, 0.43, 1),
+    ];
+    const endpointSeparation = visual.start.point.distanceTo(this.sourcePoint);
+    const distance =
+      this.fitDistance(1.14) +
+      0.04 * Math.min(endpointSeparation, this.worldRadius);
+    return this.poseFromDirection(target, directions[routeIndex]!, distance);
   }
 
   private focusPose(point: THREE.Vector3, normal: THREE.Vector3): OrbitPose {
     const target = this.worldCenter.clone().lerp(point, 0.62);
     const direction = normal.clone().add(new THREE.Vector3(0, 0.18, 0));
-    return this.poseFromDirection(target, direction, 3.45);
+    return this.poseFromDirection(
+      target,
+      direction,
+      Math.max(2.4, 1.55 * this.worldRadius),
+    );
   }
 
   private comparisonPose(): OrbitPose {
     return this.poseFromDirection(
       this.worldCenter.clone(),
-      new THREE.Vector3(0.88, 0.46, 1),
-      window.matchMedia("(max-width: 760px)").matches ? 8.25 : 8.0,
+      new THREE.Vector3(0.1, 0.38, 1),
+      this.fitDistance(1.18),
     );
+  }
+
+  private fitDistance(margin: number): number {
+    const aspect =
+      this.canvas.clientWidth > 0 && this.canvas.clientHeight > 0
+        ? this.canvas.clientWidth / this.canvas.clientHeight
+        : 1;
+    const vertical = THREE.MathUtils.degToRad(this.camera.fov);
+    const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * aspect);
+    const limiting = Math.min(vertical, horizontal);
+    return (this.worldRadius * margin) / Math.max(Math.sin(limiting / 2), 0.12);
   }
 
   private chapterPose(act: number): OrbitPose {
@@ -868,16 +909,16 @@ export class WorldScene {
     if (act === 6) {
       return this.poseFromDirection(
         this.worldCenter.clone(),
-        new THREE.Vector3(-0.75, 0.54, 1),
-        7.15,
+        new THREE.Vector3(-0.12, 0.46, 1),
+        this.fitDistance(1.1),
       );
     }
     if (act === 7) return this.comparisonPose();
     if (act === 8) {
       return this.poseFromDirection(
         this.worldCenter.clone(),
-        new THREE.Vector3(0.82, 0.62, -1),
-        7.2,
+        new THREE.Vector3(0.18, 0.52, -1),
+        this.fitDistance(1.12),
       );
     }
     return this.routePose(this.selectedRouteId);
@@ -937,7 +978,7 @@ export class WorldScene {
     }
     if (this.activeAct >= 3 && this.activeAct !== 4)
       this.world.add(active.heatPath);
-    if (this.activeAct === 4 && this.heatStarted)
+    if (this.activeAct === 4 && this.heatEnabled)
       this.world.add(active.heatPath);
   }
 
@@ -974,7 +1015,7 @@ export class WorldScene {
     this.controls.update(deltaSeconds, time);
     if (!this.reducedMotion) {
       const beaconAmplitude =
-        this.activeAct === 4 && this.heatStarted ? 0.065 : 0.018;
+        this.activeAct === 4 && this.heatEnabled ? 0.065 : 0.018;
       this.beacon.scale.setScalar(
         1 + beaconAmplitude * Math.sin(time * 0.0042),
       );
@@ -992,10 +1033,18 @@ export class WorldScene {
         Math.max(2, Math.floor(count * progress)),
       );
     }
-    if (this.activeAct === 4 && this.heatStarted) {
-      const duration = this.reducedMotion ? 1 : 4200;
+    if (
+      this.activeAct === 4 &&
+      this.heatEnabled &&
+      this.canvas.dataset.heatMode === "animation"
+    ) {
+      const duration = 4200;
       const progress = Math.min(1, (time - this.heatStartTime) / duration);
       this.applyHeat(progress);
+      if (progress >= 1) {
+        this.canvas.dataset.heatMode = "released";
+        this.onHeatStateChange?.("released");
+      }
     }
     if (this.routeReplayStart > 0 && selected.heatPath.parent) {
       const progress = this.reducedMotion

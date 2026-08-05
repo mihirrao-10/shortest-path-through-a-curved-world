@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A CPU-only C++20 Heat Method implementation with an interactive toroidal surface, measured routes, and accessible mathematics."
+      content="A C++20 Heat Method implementation across native-generated Genus 1, Genus 2, and Genus 3 surfaces, with measured routes and accessible mathematics."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -14,7 +14,7 @@
     />
     <meta
       property="og:description"
-      content="Orbit a generated torus, release heat, and compare an ambient chord, edge Dijkstra, and a traced surface path."
+      content="Explore three native-generated multi-handle worlds and compare an ambient chord, edge Dijkstra, and an official Heat Method surface path."
     />
     <meta property="og:type" content="website" />
     <meta
@@ -31,64 +31,6 @@
   <body>
     <a class="skip-link" href="#story-chapters">Skip to the story</a>
 
-    <header class="site-header" aria-label="Project header">
-      <a
-        href="https://mihirrao-10.github.io/"
-        aria-label="Back to Mihir Rao's home page"
-        >MR</a
-      >
-      <span>Shortest path / curved world</span>
-      <span id="chapter-indicator" aria-live="polite">01 / Arrival</span>
-    </header>
-
-    <aside class="progress-rail" aria-label="Story progress">
-      <span class="progress-line" aria-hidden="true"
-        ><i id="progress-fill"></i
-      ></span>
-      <ol>
-        <li>
-          <a href="#arrival" aria-label="Arrival"><span></span></a>
-        </li>
-        <li>
-          <a href="#straight-line" aria-label="Why the ambient chord fails"
-            ><span></span
-          ></a>
-        </li>
-        <li>
-          <a href="#triangles" aria-label="Triangle mesh and Dijkstra"
-            ><span></span
-          ></a>
-        </li>
-        <li>
-          <a href="#route-choice" aria-label="Choose a route"><span></span></a>
-        </li>
-        <li>
-          <a href="#release-heat" aria-label="Release heat"><span></span></a>
-        </li>
-        <li>
-          <a href="#direction" aria-label="Read the direction field"
-            ><span></span
-          ></a>
-        </li>
-        <li>
-          <a href="#mathematics" aria-label="Mathematics"><span></span></a>
-        </li>
-        <li>
-          <a href="#route-comparison" aria-label="Compare routes"
-            ><span></span
-          ></a>
-        </li>
-        <li>
-          <a href="#scale" aria-label="Scale and implementation"
-            ><span></span
-          ></a>
-        </li>
-        <li>
-          <a href="#answer" aria-label="Answer"><span></span></a>
-        </li>
-      </ol>
-    </aside>
-
     <main id="story">
       <div class="story-layout">
         <div class="visual-column">
@@ -97,27 +39,61 @@
             class="world-stage"
             aria-label="Interactive curved world visualization"
           >
-            <canvas
-              id="world-canvas"
-              tabindex="0"
-              aria-label="An interactive triangulated torus with a heat source and selected route start"
-              aria-describedby="world-instructions scene-caption"
-            ></canvas>
-            <div class="stage-vignette" aria-hidden="true"></div>
-            <div class="stage-controls" aria-label="View controls">
-              <button id="explore-view" type="button" aria-pressed="false">
-                Explore view
-              </button>
-              <button id="reset-view" type="button">Reset view</button>
-              <button id="focus-beacon" type="button">Focus beacon</button>
-              <button id="focus-route-start" type="button">
-                Focus route start
-              </button>
+            <div class="canvas-frame">
+              <canvas
+                id="world-canvas"
+                tabindex="0"
+                aria-label="An interactive native-generated triangulated surface with a heat source and selected route start"
+                aria-describedby="world-instructions scene-caption"
+              ></canvas>
+              <div
+                id="loading"
+                class="loading"
+                role="status"
+                aria-live="polite"
+              >
+                <span aria-hidden="true"></span>
+                <p>Loading native Genus 2 world</p>
+              </div>
+              <div id="webgl-fallback" class="webgl-fallback" hidden>
+                <div class="fallback-world" aria-hidden="true"></div>
+                <p>
+                  The interactive world needs WebGL. The route measurements,
+                  story, and mathematics remain available.
+                </p>
+              </div>
             </div>
-            <p class="stage-hint">
-              Drag to orbit. Use two fingers after entering Explore view. Pinch
-              to zoom.
+            <p id="scene-caption" class="scene-caption" aria-live="polite">
+              Choose a native-authored route, then orbit to inspect both ends.
             </p>
+            <div class="stage-controls">
+              <div
+                id="genus-selector"
+                class="genus-selector"
+                role="group"
+                aria-label="Surface genus"
+              >
+                <button type="button" data-genus="1" aria-pressed="false">
+                  Genus 1
+                </button>
+                <button type="button" data-genus="2" aria-pressed="true">
+                  Genus 2
+                </button>
+                <button type="button" data-genus="3" aria-pressed="false">
+                  Genus 3
+                </button>
+              </div>
+              <div class="view-controls" aria-label="View controls">
+                <button id="explore-view" type="button" aria-pressed="false">
+                  Explore view
+                </button>
+                <button id="reset-view" type="button">Reset view</button>
+                <button id="focus-beacon" type="button">Focus beacon</button>
+                <button id="focus-route-start" type="button">
+                  Focus route start
+                </button>
+              </div>
+            </div>
             <p id="world-instructions" class="sr-only">
               Drag with a mouse or one finger to orbit. Enter Explore view to
               use two-finger trackpad motion for orbiting and pinch for zoom.
@@ -125,23 +101,6 @@
               Escape exits Explore view. The Reset view, Focus beacon, and Focus
               route start buttons provide the same essential actions.
             </p>
-            <p class="source-key">
-              <i aria-hidden="true"></i> Amber marker: heat source
-            </p>
-            <p id="scene-caption" class="scene-caption" aria-live="polite">
-              Choose a native-authored route, then orbit to inspect both ends.
-            </p>
-            <div id="loading" class="loading" role="status">
-              <span aria-hidden="true"></span>
-              <p>Assembling the curved world</p>
-            </div>
-            <div id="webgl-fallback" class="webgl-fallback" hidden>
-              <div class="fallback-world" aria-hidden="true"></div>
-              <p>
-                The interactive world needs WebGL. The route measurements,
-                story, and mathematics remain available.
-              </p>
-            </div>
           </div>
         </div>
 
@@ -153,17 +112,24 @@
             aria-labelledby="arrival-title"
           >
             <div class="chapter-copy">
-              <p class="eyebrow">A question in geometry</p>
               <h1 id="arrival-title">
                 The Shortest Path Through a Curved World
               </h1>
               <p class="subtitle">
-                How heat reconstructs distance on a triangulated torus.
+                How heat reconstructs distance on triangulated multi-handle
+                surfaces.
               </p>
               <p class="lead">
-                An explorer stands on a folded ring-shaped world. An amber
-                beacon waits across its ridge, inner throat, and basin. What is
+                An explorer stands on a folded two-handle world. An amber beacon
+                waits across its outer ridge, shared neck, and basin. What is
                 the shortest route that never leaves the surface?
+              </p>
+              <p>
+                Genus counts handles: Genus 1 has one, Genus 2 has two, and
+                Genus 3 has three. For a connected closed orientable
+                triangulated surface,
+                <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
+                changes global topology, not merely cosmetic shape.
               </p>
               <a class="scroll-cue" href="#straight-line"
                 >Follow the question <span aria-hidden="true">↓</span></a
@@ -178,13 +144,12 @@
             aria-labelledby="straight-title"
           >
             <div class="chapter-copy">
-              <p class="act-label">I · The tempting answer</p>
               <h2 id="straight-title">Why not draw a straight line?</h2>
               <p>
-                The torus is a two-dimensional surface embedded in ordinary
-                three-dimensional space. That surrounding room is the
+                The curved world is a two-dimensional surface embedded in
+                ordinary three-dimensional space. That surrounding room is the
                 <em>ambient space</em>. A straight line is allowed to move
-                anywhere in that room, even where the torus is absent.
+                anywhere in that room, even where the surface is absent.
               </p>
               <p
                 class="equation equation--compact"
@@ -194,13 +159,13 @@
                 This segment is the <em>ambient chord</em> from start
                 <span data-math="p"></span> to beacon
                 <span data-math="q"></span>. It is shortest in Euclidean 3D, but
-                on a torus it can leave the surface, cut through the tube, or
-                cross empty space inside the hole.
+                on a multi-handle world it can leave the surface, cut through a
+                tube, or cross empty space inside the hole.
               </p>
               <p>
                 A <em>surface path</em> is a continuous curve
                 <span data-math="\gamma"></span> for which every point
-                <span data-math="\gamma(t)"></span> lies on the torus. Such a
+                <span data-math="\gamma(t)"></span> lies on the surface. Such a
                 path is <em>admissible</em>, meaning it is a route the explorer
                 is allowed to walk. The chord usually is not.
               </p>
@@ -222,14 +187,13 @@
             aria-labelledby="triangles-title"
           >
             <div class="chapter-copy">
-              <p class="act-label">II · Triangle mesh and Dijkstra</p>
-              <h2 id="triangles-title">How can a computer hold the torus?</h2>
+              <h2 id="triangles-title">How can a computer hold the surface?</h2>
               <p>
                 A triangle mesh stores <em>vertices</em>, the sampled points;
                 <em>edges</em>, the links between them; and triangular
                 <em>faces</em>, the local surface pieces. Every face is flat,
-                while wrapped connectivity in both toroidal directions
-                approximates one closed curved surface.
+                while halfedge connectivity joins them into one closed curved
+                surface without a boundary.
               </p>
               <p>
                 More, better-shaped triangles usually reduce discretization
@@ -238,7 +202,7 @@
                 cotangent operators less reliable.
               </p>
               <p>
-                The inner throat is <em>saddle-like</em>: along two tangent
+                The central neck is <em>saddle-like</em>: along two tangent
                 directions, the surface bends in opposite ways. That geometric
                 description is visible in the generated shape; this project does
                 not claim a separate numerical Gaussian-curvature computation.
@@ -261,78 +225,34 @@
             id="route-choice"
             class="chapter chapter--choice"
             data-act="3"
-            data-active-route-id="ridge-crossing"
+            data-active-route-id="outer-ridge"
             aria-labelledby="route-choice-title"
           >
             <div class="chapter-copy chapter-copy--wide">
-              <p class="act-label">III · Choose a route</p>
               <h2 id="route-choice-title">Three starts, one beacon.</h2>
               <p>
                 C++ authors each start as a face plus barycentric coordinates
-                near a named torus feature. All three reuse one beacon, one Heat
-                Method distance field, and one Dijkstra predecessor tree. The
-                exporter rejects any trace that misses the source, invokes
+                near a named surface feature. All three reuse one beacon, one
+                Heat Method distance field, and one Dijkstra predecessor tree.
+                The exporter rejects any trace that misses the source, invokes
                 fallback, duplicates another start, or produces an implausible
                 measurement.
               </p>
 
               <div
-                class="route-tree"
+                id="route-buttons"
+                class="route-buttons"
                 role="group"
-                aria-labelledby="route-tree-label"
-              >
-                <div id="route-tree-label" class="route-root">
-                  <span>Shared destination</span>
-                  <strong>Beacon</strong>
-                </div>
-                <div class="route-branches">
-                  <button
-                    id="route-ridge-crossing"
-                    class="route-button is-active"
-                    type="button"
-                    data-route-id="ridge-crossing"
-                    aria-pressed="true"
-                    aria-current="true"
-                  >
-                    <span>Ridge crossing</span>
-                    <small>Climb across the strongest crest</small>
-                  </button>
-                  <button
-                    id="route-inner-saddle-pass"
-                    class="route-button"
-                    type="button"
-                    data-route-id="inner-saddle-pass"
-                    aria-pressed="false"
-                    aria-current="false"
-                  >
-                    <span>Inner saddle pass</span>
-                    <small>Thread the saddle-like torus throat</small>
-                  </button>
-                  <button
-                    id="route-basin-rim"
-                    class="route-button"
-                    type="button"
-                    data-route-id="basin-rim"
-                    aria-pressed="false"
-                    aria-current="false"
-                  >
-                    <span>Basin rim</span>
-                    <small>Skirt the deep crater boundary</small>
-                  </button>
-                </div>
-              </div>
+                aria-label="Native route starts"
+              ></div>
 
               <article
                 id="route-details"
                 class="route-details"
-                data-active-route-id="ridge-crossing"
+                data-active-route-id="outer-ridge"
                 aria-live="polite"
               >
-                <p class="route-kicker">
-                  Selected route
-                  <output id="active-route-id">ridge-crossing</output>
-                </p>
-                <h3 id="active-route-name">Ridge crossing</h3>
+                <h3 id="active-route-name">Outer ridge</h3>
                 <p id="active-route-description">
                   The start and beacon lie on opposite sides of the world's
                   strongest ridge.
@@ -385,17 +305,20 @@
             aria-labelledby="heat-title"
           >
             <div class="chapter-copy">
-              <p class="act-label">IV · Release heat</p>
               <h2 id="heat-title">Warm the beacon for an instant.</h2>
               <p>
                 Heat begins at the shared source, then diffuses through the
-                connected torus. It travels around the tube, through the inner
-                region, and across the outer relief because the discrete
-                equation has no route through ambient space.
+                connected surface. It travels around each handle, through the
+                neck, through the basin, and across the outer relief because the
+                discrete equation has no route through ambient space.
               </p>
               <p class="revelation">Can the flow of heat reveal distance?</p>
-              <button id="release-button" class="release-button" type="button">
-                <span class="release-icon" aria-hidden="true"></span>
+              <button
+                id="release-button"
+                class="release-button"
+                type="button"
+                aria-pressed="false"
+              >
                 Release heat
               </button>
               <p id="heat-status" class="button-note">
@@ -411,7 +334,6 @@
             aria-labelledby="direction-title"
           >
             <div class="chapter-copy">
-              <p class="act-label">V · Read the direction field</p>
               <h2 id="direction-title">Warmth becomes direction.</h2>
               <p>
                 On each face, piecewise-linear heat values form a constant local
@@ -461,12 +383,11 @@
             aria-labelledby="math-title"
           >
             <div class="chapter-copy chapter-copy--wide">
-              <p class="act-label">VI · Mathematics</p>
               <h2 id="math-title">What does shortest mean on a surface?</h2>
               <p>
                 Begin with an admissible route
                 <span data-math="\gamma:[0,1]\to M"></span>. The symbol
-                <span data-math="M"></span> names the torus, and
+                <span data-math="M"></span> names the surface, and
                 <span data-math="\gamma(t)"></span> is the explorer's current
                 point at parameter value <span data-math="t"></span>.
               </p>
@@ -479,8 +400,8 @@
                 its norm is instantaneous speed, and the integral accumulates
                 all infinitesimal lengths. As a sanity check, a constant-speed
                 straight segment in a flat plane has length equal to ordinary
-                endpoint distance. On the torus, the curve must also satisfy the
-                surface constraint.
+                endpoint distance. On the surface, the curve must also satisfy
+                the surface constraint.
               </p>
               <p>
                 More generally, a surface metric
@@ -661,13 +582,15 @@
                 <h3>What remains approximate</h3>
                 <ul>
                   <li>The Heat Method result is an approximation.</li>
-                  <li>The triangle mesh discretizes the smooth torus.</li>
+                  <li>
+                    The triangle mesh discretizes the intended smooth surface.
+                  </li>
                   <li>A face tracer can encounter critical regions.</li>
                   <li>Cotangent operators depend on triangle quality.</li>
                   <li>Dijkstra is restricted to mesh edges.</li>
                   <li>
-                    A torus can have several nearly equal routes around
-                    different sides.
+                    A multi-handle world can have nearly equal routes in
+                    different homotopy classes.
                   </li>
                   <li>
                     All numerical computation in this project is CPU-only.
@@ -684,14 +607,13 @@
             aria-labelledby="comparison-title"
           >
             <div class="chapter-copy chapter-copy--wide">
-              <p class="act-label">VII · Compare routes</p>
               <h2 id="comparison-title">One field, three journeys.</h2>
               <p>
                 Comparison mode draws all three traced Heat Method paths on the
-                same torus. Their starts and measured lengths are distinct, but
-                the source solve remains shared. A restrained x-ray overlay is
-                used only here to keep hidden path portions readable; ordinary
-                modes preserve surface occlusion.
+                same selected surface. Their starts and measured lengths are
+                distinct, but the source solve remains shared. A restrained
+                x-ray overlay is used only here to keep hidden path portions
+                readable; ordinary modes preserve surface occlusion.
               </p>
 
               <div
@@ -704,20 +626,7 @@
                   id="comparison-legend"
                   class="comparison-legend"
                   aria-label="Route colors"
-                >
-                  <span data-route-id="ridge-crossing"
-                    ><i class="route-swatch route-swatch--ridge"></i> Ridge
-                    crossing</span
-                  >
-                  <span data-route-id="inner-saddle-pass"
-                    ><i class="route-swatch route-swatch--saddle"></i> Inner
-                    saddle pass</span
-                  >
-                  <span data-route-id="basin-rim"
-                    ><i class="route-swatch route-swatch--basin"></i> Basin
-                    rim</span
-                  >
-                </div>
+                ></div>
 
                 <div class="comparison-table-wrap" tabindex="0">
                   <table class="comparison-table">
@@ -732,26 +641,7 @@
                         <th scope="col">Heat path</th>
                       </tr>
                     </thead>
-                    <tbody id="comparison-table-body">
-                      <tr data-route-id="ridge-crossing">
-                        <th scope="row">Ridge crossing</th>
-                        <td data-comparison-metric="ambient">Loading</td>
-                        <td data-comparison-metric="dijkstra">Loading</td>
-                        <td data-comparison-metric="heat">Loading</td>
-                      </tr>
-                      <tr data-route-id="inner-saddle-pass">
-                        <th scope="row">Inner saddle pass</th>
-                        <td data-comparison-metric="ambient">Loading</td>
-                        <td data-comparison-metric="dijkstra">Loading</td>
-                        <td data-comparison-metric="heat">Loading</td>
-                      </tr>
-                      <tr data-route-id="basin-rim">
-                        <th scope="row">Basin rim</th>
-                        <td data-comparison-metric="ambient">Loading</td>
-                        <td data-comparison-metric="dijkstra">Loading</td>
-                        <td data-comparison-metric="heat">Loading</td>
-                      </tr>
-                    </tbody>
+                    <tbody id="comparison-table-body"></tbody>
                   </table>
                 </div>
               </div>
@@ -770,7 +660,6 @@
             aria-labelledby="scale-title"
           >
             <div class="chapter-copy chapter-copy--wide">
-              <p class="act-label">VIII · Scale and implementation</p>
               <h2 id="scale-title">Geometry becomes sparse algebra.</h2>
               <p>
                 Most vertices interact only with their one-ring neighbors. Eigen
@@ -803,7 +692,6 @@
             aria-labelledby="answer-title"
           >
             <div class="chapter-copy">
-              <p class="act-label">IX · Answer</p>
               <h2 id="answer-title">Heat reveals a way home.</h2>
               <p>
                 Diffuse from the beacon, normalize the facewise gradient,
@@ -825,26 +713,25 @@
         aria-labelledby="under-title"
       >
         <div class="under-intro">
-          <p class="eyebrow">For the technically curious</p>
           <h2 id="under-title">Under the hood</h2>
           <p>
             The page is static, but its geometry and numerical fields are not
             browser inventions. A deterministic native pipeline produces the
-            torus, solves the field, validates the routes, and writes the files
-            rendered here.
+            surface, solves the field, validates the routes, and writes the
+            files rendered here.
           </p>
         </div>
 
         <div class="technical-grid">
           <article>
             <span>01</span>
-            <h3>C++20 torus generation</h3>
+            <h3>C++20 multi-genus generation</h3>
             <p>
-              A periodic parameter grid creates one closed genus-one mesh with
-              no duplicated seam vertices. Analytic winding remains outward on
-              both the outer and inner tube. Native checks cover manifold
-              structure, topology, triangle quality, finite geometry, and
-              deterministic landmarks.
+              A project-specific implicit field thickens a deterministic chain
+              of rounded loops. Native marching tetrahedra reuses edge
+              intersections, smooths tangentially, reprojects to the level set,
+              and verifies orientation, manifold structure, Euler
+              characteristic, triangle quality, and deterministic landmarks.
             </p>
           </article>
           <article>
@@ -863,7 +750,7 @@
             <p>
               The exporter writes compact indexed geometry, adjacency, six heat
               states, the distance field, Dijkstra distances and predecessors,
-              gradient samples, toroidal route presets, native trace
+              gradient samples, semantic route presets, native trace
               measurements, topology, and residual metadata.
             </p>
           </article>
@@ -871,20 +758,20 @@
             <span>04</span>
             <h3>TypeScript interpretation</h3>
             <p>
-              TypeScript validates schema version 2, reconstructs the shared
-              graph route, and independently follows the exported scalar field
-              across face interiors for display. It rejects malformed or
-              inconsistent numerical payloads before the scene starts.
+              TypeScript validates binary schema version 3, topology, path
+              ranges, and measurements. The displayed green path is the native
+              C++ trace; an independent browser tracer remains a correctness
+              check rather than the authoritative geometry.
             </p>
           </article>
           <article>
             <span>05</span>
             <h3>Persistent presentation</h3>
             <p>
-              Three.js renders one stationary torus while the damped camera
-              orbits it. KaTeX emits HTML and MathML notation. Both libraries
-              are bundled into the static GitHub Pages build, including the
-              local STIX Two Text files used by the prose.
+              Three.js renders the selected native world on one reusable canvas
+              while the damped camera orbits it. KaTeX emits HTML and MathML
+              notation. Both libraries are bundled into the static GitHub Pages
+              build, including the local STIX Two Text files used by the prose.
             </p>
           </article>
           <article>
@@ -902,7 +789,7 @@
 
         <div class="implementation-notes">
           <div>
-            <p class="eyebrow">Exported primary solve</p>
+            <p>Exported primary solve</p>
             <dl id="residual-list">
               <div>
                 <dt>Mesh</dt>
@@ -918,18 +805,20 @@
               </div>
               <div>
                 <dt>Encoding</dt>
-                <dd>Binary schema v2, log-quantized heat frames</dd>
+                <dd>
+                  Binary schema v3, native paths, log-quantized heat frames
+                </dd>
               </div>
             </dl>
           </div>
           <div>
-            <p class="eyebrow">Limitations</p>
+            <p>Limitations</p>
             <p>
               The surface is discretized, the Heat Method is approximate, and
               cotangent accuracy depends on triangle quality. Dijkstra is
               edge-restricted. Face tracing can fail near critical regions,
               although every published preset is verified without fallback.
-              Distinct routes around a torus can be nearly equal. The project
+              Distinct routes around a handle can be nearly equal. The project
               uses CPU computation throughout.
             </p>
           </div>

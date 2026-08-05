@@ -1,0 +1,32 @@
+{
+  "schema": "geodesic-world-v3",
+  "title": "The Shortest Path Through a Curved World",
+  "accessibleLabel": "Genus 1 closed orientable curved world",
+  "mesh": {"kind": "implicit-thickened-loop-graph", "genus": 1, "resolution": 64, "tubeRadius": 0.3, "relief": 0.16, "seed": 1592594996},
+  "vertices": 21042,
+  "edges": 63126,
+  "faces": 42084,
+  "bounds": {"center": [0.0100439082775, -0.00291347751334, -0.00207325267637], "radius": 1.35327798265},
+  "sourceVertex": 19454,
+  "source": {"label": "Heat source", "surfacePoint": {"face": 38649, "barycentric": [0.96, 0.02, 0.02]}, "anchor": [0.98, -0.294, 0.2583]},
+  "topology": {"closed": true, "orientedManifold": true, "connectedComponents": 1, "boundaryEdges": 0, "eulerCharacteristic": 0, "genus": 1, "signedVolume": 1.8883251561},
+  "quality": {"minimumAngleDegrees": 15.2743923137, "onePercentileAngleDegrees": 27.3828419168, "maximumAspectRatio": 5.40051204252, "minimumFaceArea": 2.25247792679e-05},
+  "meanEdgeLength": 0.0267123177773,
+  "heatMethodTimeStep": 0.000713547921034,
+  "laplacianSign": "positive-semidefinite stiffness matrix approximating -Delta",
+  "boundaryCondition": "natural Neumann; generated worlds are closed",
+  "heatEncoding": "per-frame log(u), linearly quantized to uint16",
+  "heatResidual": 6.03693465927e-16,
+  "poissonResidual": 1.85809710753e-13,
+  "zeroGradientFaces": 0,
+  "routePresets": [
+    {"id": "outer-ridge", "label": "Outer ridge", "description": "Cross the raised outer ridge from the far shoulder.", "start": {"face": 39685, "barycentric": [0.333333333333, 0.333333333333, 0.333333333333]}, "dijkstraStartVertex": 19960, "ambientChordLength": 2.14922596511, "edgeDijkstraRouteLength": 2.89394320927, "tracedHeatMethodRouteLength": 2.70681223974, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 0, "nativePathCount": 238},
+    {"id": "central-neck", "label": "Central neck", "description": "Cross the compressed inner neck of the handle.", "start": {"face": 16261, "barycentric": [0.02, 0.02, 0.96]}, "dijkstraStartVertex": 8378, "ambientChordLength": 0.705600216665, "edgeDijkstraRouteLength": 0.858790932818, "tracedHeatMethodRouteLength": 0.78153165975, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 238, "nativePathCount": 73},
+    {"id": "basin-rim", "label": "Basin rim", "description": "Skirt the shallow basin along its raised rim.", "start": {"face": 28875, "barycentric": [0.5, 0.27, 0.23]}, "dijkstraStartVertex": 13384, "ambientChordLength": 2.09333783458, "edgeDijkstraRouteLength": 2.41823014288, "tracedHeatMethodRouteLength": 2.18898923538, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 311, "nativePathCount": 210}
+  ],
+  "solver": {"language": "C++20", "library": "Eigen 3.4", "precision": "float64", "direct": "SimplicialLDLT", "iterative": "conjugate gradient with incomplete Cholesky"},
+  "references": [
+    "Keenan Crane, Discrete Differential Geometry",
+    "Crane, Weischedel, and Wardetzky, Geodesics in Heat, ACM TOG 2013"
+  ]
+}

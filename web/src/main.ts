@@ -4,23 +4,15 @@ import "@fontsource/stix-two-text/latin-600.css";
 import { renderBenchmarkChart } from "./benchmark-chart";
 import "./style.css";
 import {
-  loadWorldData,
+  WorldDataRepository,
   type RoutePreset,
   type RoutePresetId,
+  type SupportedGenus,
+  type WorldBundle,
 } from "./world-data";
 import { WorldScene } from "./world-scene";
 
-const ROUTE_IDS: RoutePresetId[] = [
-  "ridge-crossing",
-  "inner-saddle-pass",
-  "basin-rim",
-];
-
 let mathematicsRendered = false;
-
-function isRouteId(value: string): value is RoutePresetId {
-  return ROUTE_IDS.some((routeId) => routeId === value);
-}
 
 function formatLength(value: number): string {
   return `${value.toFixed(3)} surface units`;
@@ -116,11 +108,9 @@ async function start(): Promise<void> {
 
   const canvas = document.querySelector<HTMLCanvasElement>("#world-canvas")!;
   const loading = document.querySelector<HTMLElement>("#loading")!;
+  const loadingCopy = loading.querySelector("p")!;
   const caption = document.querySelector<HTMLElement>("#scene-caption")!;
-  const indicator = document.querySelector<HTMLElement>("#chapter-indicator");
   const activeName = document.querySelector<HTMLElement>("#active-route-name")!;
-  const activeId =
-    document.querySelector<HTMLOutputElement>("#active-route-id")!;
   const activeDescription = document.querySelector<HTMLElement>(
     "#active-route-description",
   )!;
@@ -133,9 +123,10 @@ async function start(): Promise<void> {
   const comparisonBody = document.querySelector<HTMLElement>(
     "#comparison-table-body",
   )!;
-  const routeButtons = [
-    ...document.querySelectorAll<HTMLButtonElement>("button[data-route-id]"),
-  ];
+  const comparisonLegend =
+    document.querySelector<HTMLElement>("#comparison-legend")!;
+  const routeButtonsContainer =
+    document.querySelector<HTMLElement>("#route-buttons")!;
   const releaseButton =
     document.querySelector<HTMLButtonElement>("#release-button")!;
   const heatStatus = document.querySelector<HTMLElement>("#heat-status")!;
@@ -156,9 +147,8 @@ async function start(): Promise<void> {
     document.querySelector<HTMLButtonElement>("#focus-route-start")!;
   const routeChoice = document.querySelector<HTMLElement>("#route-choice")!;
   const routeDetails = document.querySelector<HTMLElement>("#route-details")!;
-  const progressFill = document.querySelector<HTMLElement>("#progress-fill");
-  const progressItems = [
-    ...document.querySelectorAll<HTMLLIElement>(".progress-rail li"),
+  const genusButtons = [
+    ...document.querySelectorAll<HTMLButtonElement>("button[data-genus]"),
   ];
   const chapters = [
     ...document.querySelectorAll<HTMLElement>(".chapter[data-act]"),
@@ -166,16 +156,31 @@ async function start(): Promise<void> {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
+  const repository = new WorldDataRepository();
 
-  let worldScene: WorldScene;
-  let selectedRouteId: RoutePresetId = "ridge-crossing";
-  let releaseTimer = 0;
+  let worldScene: WorldScene | undefined;
+  let activeGenus: SupportedGenus = 2;
+  let selectedRouteId: RoutePresetId = "";
   let presetById = new Map<RoutePresetId, RoutePreset>();
+  let routeButtons: HTMLButtonElement[] = [];
+  let loadingGenus = false;
+  let activeChapter = chapters[0] ?? null;
+
+  const setHeatInterface = (state: "idle" | "animation" | "released"): void => {
+    const enabled = state !== "idle";
+    releaseButton.setAttribute("aria-pressed", String(enabled));
+    releaseButton.textContent = enabled ? "Remove heat" : "Release heat";
+    heatStatus.textContent =
+      state === "animation"
+        ? "Diffusion is moving through six exported C++ solutions."
+        : state === "released"
+          ? "Diffusion complete. Select Remove heat to restore the surface."
+          : "Six exported diffusion states, solved by the C++ engine.";
+  };
 
   const updateRouteCopy = (preset: RoutePreset): void => {
     selectedRouteId = preset.id;
     document.body.dataset.activeRoute = preset.id;
-    activeId.textContent = preset.id;
     routeChoice.dataset.activeRouteId = preset.id;
     routeDetails.dataset.activeRouteId = preset.id;
     activeName.textContent = preset.label;
@@ -192,13 +197,76 @@ async function start(): Promise<void> {
     });
   };
 
-  try {
-    const { data, metadata } = await loadWorldData();
+  const selectRoute = (routeId: RoutePresetId): void => {
+    if (!worldScene || !presetById.has(routeId)) return;
+    worldScene.selectRoute(routeId);
+    updateRouteCopy(presetById.get(routeId)!);
+    comparisonPanel.hidden = true;
+    compareRoutes.setAttribute("aria-pressed", "false");
+    caption.textContent = worldScene.caption;
+  };
+
+  const rebuildRouteButtons = (presets: readonly RoutePreset[]): void => {
+    routeButtonsContainer.replaceChildren();
+    comparisonLegend.replaceChildren();
+    routeButtons = presets.map((preset, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "route-button";
+      button.dataset.routeId = preset.id;
+      button.setAttribute("aria-pressed", String(index === 0));
+      const label = document.createElement("span");
+      label.textContent = preset.label;
+      const description = document.createElement("small");
+      description.textContent = preset.description;
+      button.append(label, description);
+      button.addEventListener("click", () => selectRoute(preset.id));
+      routeButtonsContainer.append(button);
+      const legendItem = document.createElement("span");
+      legendItem.dataset.routeId = preset.id;
+      const swatch = document.createElement("i");
+      swatch.className = "route-swatch";
+      legendItem.append(swatch, preset.label);
+      comparisonLegend.append(legendItem);
+      return button;
+    });
+  };
+
+  const updateExportedMeasurements = (bundle: WorldBundle): void => {
+    const residualValues =
+      document.querySelectorAll<HTMLElement>("#residual-list dd");
+    if (residualValues[0]) {
+      residualValues[0].textContent = `Genus ${bundle.metadata.topology.genus}, ${bundle.metadata.vertices.toLocaleString()} vertices / ${bundle.metadata.faces.toLocaleString()} faces`;
+    }
+    if (residualValues[1]) {
+      residualValues[1].textContent =
+        bundle.metadata.heatResidual.toExponential(2);
+    }
+    if (residualValues[2]) {
+      residualValues[2].textContent =
+        bundle.metadata.poissonResidual.toExponential(2);
+    }
+  };
+
+  const setGenusControls = (genus: SupportedGenus, disabled: boolean): void => {
+    genusButtons.forEach((button) => {
+      button.disabled = disabled;
+      button.setAttribute(
+        "aria-pressed",
+        String(Number(button.dataset.genus) === genus),
+      );
+    });
+  };
+
+  const createScene = (bundle: WorldBundle): void => {
+    worldScene?.destroy();
+    activeGenus = bundle.metadata.topology.genus;
     presetById = new Map(
-      metadata.routePresets.map((preset) => [preset.id, preset]),
+      bundle.metadata.routePresets.map((preset) => [preset.id, preset]),
     );
-    fillComparisonTable(comparisonBody, metadata.routePresets);
-    worldScene = new WorldScene(canvas, data, metadata, {
+    rebuildRouteButtons(bundle.metadata.routePresets);
+    fillComparisonTable(comparisonBody, bundle.metadata.routePresets);
+    worldScene = new WorldScene(canvas, bundle.data, bundle.metadata, {
       reducedMotion,
       onRouteSelected: updateRouteCopy,
       onExploreChange: (engaged) => {
@@ -210,23 +278,63 @@ async function start(): Promise<void> {
       onCaptionChange: (nextCaption) => {
         caption.textContent = nextCaption;
       },
+      onHeatStateChange: setHeatInterface,
     });
     updateRouteCopy(worldScene.selectedPreset);
-
-    const residualValues =
-      document.querySelectorAll<HTMLElement>("#residual-list dd");
-    if (residualValues[0]) {
-      residualValues[0].textContent = `${metadata.vertices.toLocaleString()} vertices / ${metadata.faces.toLocaleString()} faces`;
-    }
-    if (residualValues[1]) {
-      residualValues[1].textContent = metadata.heatResidual.toExponential(2);
-    }
-    if (residualValues[2]) {
-      residualValues[2].textContent = metadata.poissonResidual.toExponential(2);
-    }
-    loading.hidden = true;
     comparisonPanel.hidden = true;
     compareRoutes.setAttribute("aria-pressed", "false");
+    setHeatInterface("idle");
+    const activeAct = Number(activeChapter?.dataset.act ?? 0);
+    worldScene.setAct(activeAct);
+    canvas.setAttribute(
+      "aria-label",
+      `${bundle.metadata.accessibleLabel} with an amber heat source and selected native route`,
+    );
+    document.body.dataset.genus = String(activeGenus);
+    updateExportedMeasurements(bundle);
+  };
+
+  const switchWorld = async (
+    genus: SupportedGenus,
+    initial = false,
+  ): Promise<void> => {
+    if (loadingGenus || (!initial && genus === activeGenus)) return;
+    loadingGenus = true;
+    const preservedScroll = window.scrollY;
+    const wasCached = repository.isCached(genus);
+    worldScene?.setHeatEnabled(false);
+    setHeatInterface("idle");
+    setGenusControls(genus, true);
+    loading.hidden = false;
+    loading.dataset.genus = String(genus);
+    loadingCopy.textContent = wasCached
+      ? `Restoring cached Genus ${genus} world`
+      : `Loading native Genus ${genus} world`;
+    try {
+      const bundle = await repository.loadWorld(genus);
+      createScene(bundle);
+      canvas.dataset.loadSource = wasCached ? "cache" : "network";
+      loading.hidden = true;
+      window.scrollTo({ top: preservedScroll, behavior: "auto" });
+      setGenusControls(genus, false);
+      caption.textContent = `Genus ${genus} loaded from native geometry and fields.`;
+    } catch (error) {
+      if (initial || !worldScene) throw error;
+      const message = error instanceof Error ? error.message : "unknown error";
+      loadingCopy.textContent = `Genus ${genus} could not load: ${message}`;
+      window.setTimeout(() => {
+        loading.hidden = true;
+      }, 2600);
+      setGenusControls(activeGenus, false);
+      window.scrollTo({ top: preservedScroll, behavior: "auto" });
+    } finally {
+      loadingGenus = false;
+    }
+  };
+
+  try {
+    const manifest = await repository.loadManifest();
+    await switchWorld(manifest.defaultGenus, true);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "unknown loading error";
@@ -236,74 +344,49 @@ async function start(): Promise<void> {
     return;
   }
 
-  const selectRoute = (routeId: RoutePresetId): void => {
-    worldScene.selectRoute(routeId);
-    const preset = presetById.get(routeId);
-    if (preset) updateRouteCopy(preset);
-    comparisonPanel.hidden = true;
-    compareRoutes.setAttribute("aria-pressed", "false");
-    caption.textContent = worldScene.caption;
-  };
-
-  routeButtons.forEach((button) => {
+  genusButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const routeId = button.dataset.routeId ?? "";
-      if (isRouteId(routeId)) selectRoute(routeId);
+      const genus = Number(button.dataset.genus);
+      if (genus === 1 || genus === 2 || genus === 3) void switchWorld(genus);
     });
   });
 
   exploreView.addEventListener("click", () => {
-    worldScene.toggleExplore();
-    caption.textContent = worldScene.exploreEngaged
-      ? "Explore view engaged. Two-finger motion orbits, pinch zooms, and Escape exits."
-      : worldScene.caption;
+    worldScene?.toggleExplore();
+    if (worldScene) {
+      caption.textContent = worldScene.exploreEngaged
+        ? "Explore view engaged. Two-finger motion orbits, pinch zooms, and Escape exits."
+        : worldScene.caption;
+    }
   });
-
-  resetView.addEventListener("click", () => {
-    worldScene.resetView();
-    caption.textContent = "The selected route and beacon are framed again.";
-  });
-
-  focusBeacon.addEventListener("click", () => {
-    worldScene.focusBeacon();
-    caption.textContent =
-      "Focused on the amber heat source. Drag to inspect its position.";
-  });
-
-  focusRouteStart.addEventListener("click", () => {
-    worldScene.focusRouteStart();
-    caption.textContent = `Focused on the ${worldScene.selectedPreset.label.toLowerCase()} start.`;
-  });
+  resetView.addEventListener("click", () => worldScene?.resetView());
+  focusBeacon.addEventListener("click", () => worldScene?.focusBeacon());
+  focusRouteStart.addEventListener("click", () =>
+    worldScene?.focusRouteStart(),
+  );
 
   releaseButton.addEventListener("click", () => {
-    window.clearTimeout(releaseTimer);
-    worldScene.releaseHeat();
-    releaseButton.disabled = true;
-    releaseButton.textContent = "Heat released";
-    heatStatus.textContent =
-      "Diffusion is moving through six exported C++ solutions.";
-    caption.textContent = worldScene.caption;
-    releaseTimer = window.setTimeout(
-      () => {
-        heatStatus.textContent =
-          "Diffusion complete. Continue to read the direction field.";
-      },
-      reducedMotion ? 0 : 4300,
+    if (!worldScene) return;
+    const enabled = worldScene.toggleHeat();
+    setHeatInterface(
+      enabled ? (reducedMotion ? "released" : "animation") : "idle",
     );
+    caption.textContent = worldScene.caption;
   });
 
   replayRoute.addEventListener("click", () => {
+    if (!worldScene) return;
     worldScene.replayRoute();
     comparisonPanel.hidden = true;
     compareRoutes.setAttribute("aria-pressed", "false");
-    caption.textContent = `${worldScene.selectedPreset.label} replayed from its authored start.`;
+    caption.textContent = `${worldScene.selectedPreset.label} replayed from its native-authored start.`;
   });
 
   chooseRoute.addEventListener("click", () => {
-    worldScene.hideRouteComparison();
+    worldScene?.hideRouteComparison();
     comparisonPanel.hidden = true;
     compareRoutes.setAttribute("aria-pressed", "false");
-    document.querySelector("#route-choice")?.scrollIntoView({
+    routeChoice.scrollIntoView({
       behavior: reducedMotion ? "auto" : "smooth",
       block: "center",
     });
@@ -317,45 +400,20 @@ async function start(): Promise<void> {
   });
 
   compareRoutes.addEventListener("click", () => {
-    const showComparisonState = (): void => {
-      worldScene.setAct(7);
-      worldScene.showRouteComparison();
-      comparisonPanel.hidden = false;
-      compareRoutes.setAttribute("aria-pressed", "true");
-      caption.textContent = worldScene.caption;
-    };
-    showComparisonState();
-    const mobile = window.matchMedia("(max-width: 760px)").matches;
-    const stageBottom = document
-      .querySelector<HTMLElement>("#world-stage")!
-      .getBoundingClientRect().bottom;
-    const desiredPanelTop = mobile
-      ? Math.min(window.innerHeight * 0.62, stageBottom + 16)
-      : 160;
-    const targetTop =
-      window.scrollY +
-      comparisonPanel.getBoundingClientRect().top -
-      desiredPanelTop;
-    window.scrollTo({
-      top: targetTop,
-      behavior: reducedMotion ? "auto" : "smooth",
-    });
-    window.setTimeout(
-      () => {
-        showComparisonState();
-        comparisonPanel.focus({ preventScroll: true });
-      },
-      reducedMotion ? 0 : 650,
-    );
+    if (!worldScene) return;
+    worldScene.setAct(7);
+    worldScene.showRouteComparison();
+    comparisonPanel.hidden = false;
+    compareRoutes.setAttribute("aria-pressed", "true");
+    caption.textContent = worldScene.caption;
+    comparisonPanel.focus({ preventScroll: true });
   });
 
   replayJourney.addEventListener("click", () => {
-    window.clearTimeout(releaseTimer);
+    if (!worldScene) return;
     worldScene.resetJourney();
     updateRouteCopy(worldScene.selectedPreset);
-    releaseButton.disabled = false;
-    releaseButton.textContent = "Release heat";
-    heatStatus.textContent = "Six C++ generated diffusion states are ready.";
+    setHeatInterface("idle");
     comparisonPanel.hidden = true;
     compareRoutes.setAttribute("aria-pressed", "false");
     document.querySelector("#arrival")?.scrollIntoView({
@@ -364,7 +422,6 @@ async function start(): Promise<void> {
     });
   });
 
-  let activeChapter: HTMLElement | null = null;
   let ticking = false;
   const activateChapter = (chapter: HTMLElement): void => {
     if (chapter === activeChapter) return;
@@ -373,17 +430,12 @@ async function start(): Promise<void> {
       candidate.classList.toggle("is-active", candidate === chapter),
     );
     const act = Number(chapter.dataset.act ?? 0);
-    worldScene.setAct(act);
-    const heading = chapter.querySelector("h1, h2")?.textContent?.trim();
-    if (indicator) indicator.textContent = heading ?? "Curved world";
-    caption.textContent = worldScene.caption;
-    progressItems.forEach((item, index) =>
-      item.classList.toggle("is-active", index === act),
-    );
+    worldScene?.setAct(act);
+    if (worldScene) caption.textContent = worldScene.caption;
     if (act === 7) {
       comparisonPanel.hidden = false;
       compareRoutes.setAttribute("aria-pressed", "true");
-    } else if (comparisonPanel.hidden === false) {
+    } else if (!comparisonPanel.hidden) {
       comparisonPanel.hidden = true;
       compareRoutes.setAttribute("aria-pressed", "false");
     }
@@ -395,13 +447,13 @@ async function start(): Promise<void> {
     let nearest = chapters[0]!;
     let nearestDistance = Number.POSITIVE_INFINITY;
     chapters.forEach((chapter) => {
-      const rect = chapter.getBoundingClientRect();
+      const rectangle = chapter.getBoundingClientRect();
       const distance =
-        rect.top <= targetY && rect.bottom >= targetY
+        rectangle.top <= targetY && rectangle.bottom >= targetY
           ? 0
           : Math.min(
-              Math.abs(rect.top - targetY),
-              Math.abs(rect.bottom - targetY),
+              Math.abs(rectangle.top - targetY),
+              Math.abs(rectangle.bottom - targetY),
             );
       if (distance < nearestDistance) {
         nearest = chapter;
@@ -409,12 +461,6 @@ async function start(): Promise<void> {
       }
     });
     activateChapter(nearest);
-    if (progressFill) {
-      const scrollable =
-        document.documentElement.scrollHeight - window.innerHeight;
-      const progress = scrollable > 0 ? window.scrollY / scrollable : 0;
-      progressFill.style.height = `${Math.min(1, Math.max(0, progress)) * 100}%`;
-    }
   };
   const requestStoryUpdate = (): void => {
     if (ticking) return;
@@ -428,8 +474,7 @@ async function start(): Promise<void> {
   window.addEventListener(
     "beforeunload",
     () => {
-      window.clearTimeout(releaseTimer);
-      worldScene.destroy();
+      worldScene?.destroy();
     },
     { once: true },
   );

@@ -251,9 +251,64 @@ bool TriangleMesh::validateManifold(std::string* reason) const {
   }
   for (Index vertex = 0; vertex < vertices_.size(); ++vertex) {
     const Index halfedge = vertices_[vertex].halfedge;
-    if (halfedge != kInvalidIndex &&
-        (halfedge >= halfedges_.size() || halfedges_[halfedge].origin != vertex)) {
+    if (halfedge == kInvalidIndex || vertexFaces_[vertex].empty()) {
+      return fail("mesh contains an isolated vertex");
+    }
+    if (halfedge >= halfedges_.size() || halfedges_[halfedge].origin != vertex) {
       return fail("vertex-to-halfedge incidence is invalid");
+    }
+
+    // A two-manifold vertex has a link that is exactly one cycle (interior) or
+    // one path (boundary). Edge incidence alone cannot detect a bow-tie vertex,
+    // whose incident triangles form two otherwise valid but disconnected fans.
+    std::unordered_map<Index, std::vector<Index>> link;
+    std::unordered_set<std::uint64_t> linkEdges;
+    for (const Index face : vertexFaces_[vertex]) {
+      const Triangle& triangle = faces_[face].vertices;
+      std::array<Index, 2> opposite{};
+      std::size_t count = 0;
+      for (const Index candidate : triangle) {
+        if (candidate != vertex) {
+          opposite[count++] = candidate;
+        }
+      }
+      if (count != 2U) {
+        return fail("vertex link contains a malformed incident face");
+      }
+      const std::uint64_t key = undirectedKey(opposite[0], opposite[1]);
+      if (!linkEdges.insert(key).second) {
+        return fail("vertex link contains a duplicate edge");
+      }
+      link[opposite[0]].push_back(opposite[1]);
+      link[opposite[1]].push_back(opposite[0]);
+    }
+
+    std::size_t degreeOne = 0;
+    for (const auto& [_, adjacent] : link) {
+      if (adjacent.size() == 1U) {
+        ++degreeOne;
+      } else if (adjacent.size() != 2U) {
+        return fail("vertex link is not a path or cycle");
+      }
+    }
+    if (degreeOne != 0U && degreeOne != 2U) {
+      return fail("vertex link has invalid boundary incidence");
+    }
+
+    std::vector<Index> stack{link.begin()->first};
+    std::unordered_set<Index> visited;
+    while (!stack.empty()) {
+      const Index current = stack.back();
+      stack.pop_back();
+      if (!visited.insert(current).second) {
+        continue;
+      }
+      for (const Index next : link.at(current)) {
+        stack.push_back(next);
+      }
+    }
+    if (visited.size() != link.size()) {
+      return fail("vertex link contains disconnected triangle fans");
     }
   }
   return true;

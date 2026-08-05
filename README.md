@@ -1,232 +1,230 @@
 # The Shortest Path Through a Curved World
 
-A C++20 CPU implementation of the Heat Method for geodesic distance on triangle meshes, paired with a static Three.js explanation on a genuine toroidal surface.
+A C++20 CPU implementation of the Heat Method on three native-generated closed orientable surfaces, paired with a static Three.js mathematical narrative.
 
 - Live project: <https://mihirrao-10.github.io/shortest-path-through-a-curved-world/>
 - Method: [Crane, Weischedel, and Wardetzky, *Geodesics in Heat*](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf)
 - Mathematical background: [Crane, *Discrete Differential Geometry: An Applied Introduction*](https://www.cs.cmu.edu/~kmcrane/Projects/DDG/paper.pdf)
 
-The browser does not invent the world or its measurements. The native engine generates the mesh, validates its topology, solves the sparse systems, traces the routes, and exports the numerical state consumed by the site.
+The browser does not synthesize geometry or numerical results. C++ generates and validates every surface, builds the discrete operators, solves the heat and Poisson systems, computes Dijkstra, traces the official paths, measures all three route models, and exports the state. TypeScript validates and presents that state. Three.js renders it.
 
 ## What is implemented
 
-- A periodic torus generator with wrapped indexing in both parameter directions
-- Smooth asymmetric relief, including an outer ridge, a basin and rim, unequal tube thickness, and a saddle-like inner throat
-- An oriented halfedge triangle mesh with manifold, incidence, and boundary validation
-- Face areas and normals, area-weighted vertex normals, edge lengths, and degeneracy checks
+- Deterministic implicit Genus 1, Genus 2, and Genus 3 curved worlds, with Genus 2 as the default
+- Smooth thickened-loop-graph geometry extracted by marching tetrahedra with shared edge intersections
+- Restrained low-frequency radius variation and spatial warping without random vertex noise
+- An oriented halfedge triangle mesh with edge and vertex manifold validation
+- Exact exported topology checks, including one component, no boundary, outward signed volume, and chi = 2 - 2g
+- Semantic world-space landmarks mapped natively to barycentric surface points
+- Face areas and normals, area-weighted vertex normals, edge lengths, and mesh-quality checks
 - Lumped barycentric mass and cotangent stiffness matrices
 - Piecewise-linear face gradients and a weak divergence load
 - Direct and iterative Eigen sparse solve paths on CPU
 - Reusable preprocessing and factorizations for repeated source queries
-- True relative residual reporting for the heat and Poisson systems
+- True relative residual reporting for heat and Poisson systems
 - Edge-weighted Dijkstra with predecessor reconstruction
 - Native path tracing across face interiors through barycentric edge crossings
-- Three deterministic, native-authored route presets sharing one source and one Heat Method field
-- A deterministic binary and JSON export for the static website
-- TypeScript validation, browser path reconstruction, Three.js rendering, and accessible KaTeX notation
-- Native, Vitest, and Playwright test suites
+- Three deterministic route presets per genus, all sharing one source and field
+- Authoritative native route polylines and measurements in the binary export
+- A manifest-driven, lazy, cached browser loader
+- TypeScript topology reconstruction and payload cross-validation
+- Three.js rendering, custom orbit controls, accessible interactions, and KaTeX notation
+- Native, Vitest, and Playwright coverage
 
-The refined icosphere generator remains available only as a numerical test fixture. The published curved world is the periodic genus-one torus.
+The refined icosphere and planar grid remain numerical test fixtures. They are independent of the three published worlds.
+
+## Topology and geometry
+
+Genus counts handles. Genus 1 has one handle, Genus 2 has two, and Genus 3 has three. For each connected closed orientable triangulated world, the exporter derives
+
+    chi = V - E + F
+    g = 1 - chi / 2
+
+and requires chi = 2 - 2g. The requested genus is never trusted as the topology result.
+
+Each world begins as the smooth tubular neighborhood of one, two, or three overlapping rounded loops. Their embedded graph has the intended cycle rank, and the boundary of its regular neighborhood has the same genus. A smooth implicit minimum joins the tubes. Marching tetrahedra extracts the zero level set on a deterministic grid and reuses each grid-edge intersection so neighboring cells share vertices.
+
+Triangle winding is chosen from the implicit gradient. Duplicate and degenerate faces are rejected. A few tangential smoothing and level-set reprojection passes improve the surface without changing connectivity. The final mesh must be connected, boundary-free, consistently oriented, two-manifold at every edge and vertex, and positively oriented by signed volume.
+
+Low-frequency terms introduce unequal lobes, a broad ridge, a shallow basin and rim, a compressed neck, and gentle vertical displacement. The seed controls phases deterministically. There is no per-vertex random noise.
 
 ## Build and test
 
-Requirements are CMake 3.22 or newer, a C++20 compiler, and Eigen 3.4. If Eigen is not installed, CMake fetches the pinned Eigen 3.4.0 archive.
+Requirements are CMake 3.22 or newer, a C++20 compiler, and Eigen 3.4. CMake fetches the pinned Eigen 3.4.0 archive when Eigen is not installed.
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+~~~sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-```
+~~~
 
 Build and check the static site:
 
-```sh
+~~~sh
 cd web
 npm ci
 npm run check
 npm run test:e2e
-```
+~~~
 
-Vite uses the GitHub Pages base path `/shortest-path-through-a-curved-world/`.
+Vite uses the GitHub Pages base path /shortest-path-through-a-curved-world/.
 
 ## Command-line tools
 
-Generate the default torus as OBJ:
+Generate any published genus as OBJ:
 
-```sh
+~~~sh
 ./build/geodesic_cli generate \
-  --major-segments 160 \
-  --minor-segments 64 \
-  --major-radius 1.28 \
-  --minor-radius 0.46 \
-  --relief 0.18 \
+  --genus 2 \
+  --resolution 96 \
+  --tube-radius 0.30 \
+  --relief 0.16 \
   --seed 1592594996 \
-  --output curved-torus.obj
-```
+  --output double-torus.obj
+~~~
+
+Only genus values 1, 2, and 3 are accepted.
 
 Solve a field on any supported OBJ mesh:
 
-```sh
+~~~sh
 ./build/geodesic_cli solve \
-  --mesh curved-torus.obj \
+  --mesh double-torus.obj \
   --source 9209 \
   --method heat \
   --output heat-distance.csv
 
 ./build/geodesic_cli solve \
-  --mesh curved-torus.obj \
+  --mesh double-torus.obj \
   --source 9209 \
   --method dijkstra \
   --output graph-distance.csv
-```
+~~~
 
 Trace a Heat Method path from a mesh vertex:
 
-```sh
+~~~sh
 ./build/geodesic_cli path \
-  --mesh curved-torus.obj \
+  --mesh double-torus.obj \
   --source 9209 \
   --start 1669 \
   --output route.obj
-```
+~~~
 
-Regenerate the exact checked-in web data and CPU benchmark:
+Export one web bundle or all three:
 
-```sh
+~~~sh
+./build/geodesic_cli export-web --genus 2 --resolution 64 --output web/public/data/worlds/genus-2
+./build/geodesic_cli export-web --all --resolution 64 --output web/public/data/worlds
+~~~
+
+Regenerate the checked-in web data and CPU benchmark:
+
+~~~sh
 GEODESIC_BENCHMARK_HOST="Apple M4 (10-core) MacBook Pro, 16 GB, macOS 26.5" \
   ./scripts/export-web-data.sh
-```
+~~~
 
-The script performs a Release build, runs the native exporter with explicit torus parameters, benchmarks a fixed resolution sequence, and copies the benchmark JSON into the public data directory.
-
-## Toroidal mesh
-
-For periodic angles (u,v\in[0,2\pi)), the undeformed reference surface is
-
-\[
-p(u,v)=\big((R+r\cos v)\cos u,\ (R+r\cos v)\sin u,\ r\sin v\big).
-\]
-
-The implementation stores one vertex for every pair of periodic grid indices. It never duplicates either seam. Every wrapped quad is split with the same analytic orientation, so winding does not depend on a face normal dotted with a vector from the origin. That origin-based rule would fail on the inner side of a torus.
-
-The default (160\times64) grid has 10,240 vertices and 20,480 triangular faces. Native validation confirms:
-
-- every undirected edge belongs to exactly two faces;
-- shared edges have opposite directed orientation;
-- there are no boundary edges or degenerate faces;
-- (V-E+F=0), hence the closed orientable mesh has genus one;
-- normals and areas are finite;
-- the minimum triangle angle and maximum aspect ratio remain within conservative limits;
-- the central hole retains a positive clearance;
-- a fixed seed produces byte-identical geometry and metadata.
-
-All relief terms use periodic functions or wrapped angular distances. Their scale is deliberately broad relative to the triangles, which avoids corrugation and unstable cotangent weights.
+The script performs a Release build, runs native tests, creates all three exports and their manifest, validates each export through the native pipeline, benchmarks the default Genus 2 world, and copies benchmark JSON into the public data directory.
 
 ## Heat Method convention
 
-Let (M\) be the diagonal lumped mass matrix and (L\) the symmetric positive-semidefinite stiffness matrix that approximates (-\Delta). For a source impulse \(\delta\), the native solver performs
+Let M be the diagonal lumped mass matrix and L the symmetric positive-semidefinite stiffness matrix approximating -Delta. For a source impulse delta, the solver performs
 
-\[
-(M+tL)u=M\delta,
-\qquad
-X=-\frac{\nabla u}{\lVert\nabla u\rVert},
-\qquad
-L\phi=b_X.
-\]
+    (M + tL)u = M delta
+    X = -grad(u) / |grad(u)|
+    L phi = b_X
 
-The time step is (t=h^2), where (h) is mean edge length. The first system diffuses a brief impulse. The normalized negative heat gradient points approximately in the direction of increasing distance. The weak Poisson solve reconstructs the scalar field whose gradient best agrees with those facewise directions.
+The time step is t = h^2, where h is mean edge length. Backward Euler diffuses a brief impulse. The normalized negative heat gradient gives a facewise direction field. A weak Poisson solve reconstructs the scalar field whose gradient best agrees with those directions.
 
-The stiffness matrix has a one-dimensional constant nullspace on this connected closed mesh. The implementation factors a copy with one reference degree of freedom pinned, solves it, then shifts the result so the source distance is zero.
+The stiffness matrix has a one-dimensional constant nullspace on each connected closed world. The implementation factors a copy with one reference degree of freedom pinned, solves it, then shifts the result so the source distance is zero.
 
-For an interior edge (ij), the familiar weight is
-
-\[
-w_{ij}=\tfrac12(\cot\alpha_{ij}+\cot\beta_{ij}),
-\]
-
-where the two angles are opposite the edge. The code assembles equivalent local triangle energy contributions, preserving symmetry and zero row sums.
+For an interior edge ij, the familiar weight is one half of the sum of the cotangents of the two opposite angles. The implementation assembles equivalent local triangle energy terms, preserving symmetry and zero row sums.
 
 ## Solver and path design
 
-`HeatMethodSolver` separates mesh-dependent work from source-dependent work:
+HeatMethodSolver separates mesh-dependent work from source-dependent work:
 
-1. assemble (M), (L), face bases, and mean edge length;
-2. factor (M+tL);
+1. assemble M, L, face bases, and mean edge length;
+2. factor M + tL;
 3. factor the pinned Poisson matrix;
 4. reuse both factors for later source right-hand sides.
 
-The direct path uses `Eigen::SimplicialLDLT`. The iterative path uses conjugate gradient with incomplete Cholesky. Both calculate the true relative residual
+The direct path uses Eigen::SimplicialLDLT. The iterative path uses conjugate gradient with incomplete Cholesky. Both report the true relative residual ||Ax - b|| / max(||b||, 1e-30).
 
-\[
-\frac{\lVert Ax-b\rVert_2}{\max(\lVert b\rVert_2,10^{-30})}.
-\]
+Distance is piecewise linear, so its gradient is constant within each triangle. Starting from a barycentric surface point, the tracer follows decreasing distance, determines which barycentric coordinate reaches zero first, crosses the corresponding halfedge twin, and continues toward the source. It guards against critical points, repeated faces, invalid barycentric states, boundaries, and step limits. The general tracer can recover through a monotone one-ring step, but every published route is rejected if recovery is needed.
 
-Distance is piecewise linear, so its gradient is constant within a face. Starting from a barycentric surface point, the tracer follows decreasing distance, computes which barycentric coordinate reaches zero first, crosses the corresponding halfedge twin, and continues toward the source. It detects critical points, repeated faces, invalid barycentric states, boundaries, and step limits. The general tracer retains a guarded monotone one-ring recovery, but every published route is rejected if that recovery is needed.
+## Landmarks and route problems
 
-## Authored routes and three distance problems
+The generator returns world-space anchors for the beacon, Outer ridge, Central neck, and Basin rim. C++ searches nearby faces and maps each anchor to a valid SurfacePoint. This replaces the former rectangular torus parameter grid and works for every genus.
 
-The public export contains `ridge-crossing`, `inner-saddle-pass`, and `basin-rim`. Each start is a native-authored face and barycentric coordinate tied to toroidal parameter space. The source is also selected by a fixed toroidal coordinate rather than by direction from the origin.
+Each preset reports three quantities with different admissible domains:
 
-Each preset reports three measured quantities with different admissible domains:
-
-- Ambient chord: the straight segment may move anywhere in 3D.
+- Ambient chord: a straight segment may move anywhere in three-dimensional space.
 - Edge Dijkstra: the route may move only along mesh edges.
-- Heat trace: the route crosses triangle interiors on the triangulated surface.
+- Heat trace: the route may cross triangle interiors while remaining on the mesh.
 
-The exporter requires every route to reach the source without recovery, remain distinct from the other presets, have finite measurements, exceed its ambient chord, and stay within a conservative ratio of its edge-graph baseline.
+The exporter requires every route to reach the source without fallback, contain several points, remain distinct, have finite positive measurements, exceed its ambient chord, and stay within a conservative ratio of its edge-graph baseline.
 
-## Web export
+The Heat trace shown by Three.js is the native polyline stored in the binary. The browser retains a face-wise tracer as a cross-check, not as the authoritative displayed answer.
 
-`web/public/data/world.bin` contains indexed geometry, normals, face adjacency, six real heat states, Heat Method distance, Dijkstra distance and predecessors, normalized gradient samples, and the shared source index. `world.meta.json` records torus parameters, topology, quality statistics, solver conventions, residuals, and route measurements.
+## Web export and loading
 
-Schema version 2 is documented in [`data/schema.md`](data/schema.md). Export metadata omits machine-dependent solve timing so a fixed configuration stays deterministic. Benchmark timing lives in a separate measured file.
+The generated layout is:
 
-The browser validates counts and invariants before constructing the scene. It traces the exported distance field independently for display, requires every browser trace to reach the source, and presents the native-authored measurements. Three.js only renders the supplied geometry. It does not replace it with a built-in torus primitive.
+    web/public/data/worlds/manifest.json
+    web/public/data/worlds/genus-1/world.bin
+    web/public/data/worlds/genus-1/world.meta.json
+    web/public/data/worlds/genus-2/world.bin
+    web/public/data/worlds/genus-2/world.meta.json
+    web/public/data/worlds/genus-3/world.bin
+    web/public/data/worlds/genus-3/world.meta.json
+
+Binary and metadata schema version 3 are documented in [data/schema.md](data/schema.md). The initial page requests only the manifest and Genus 2. Genus 1 and Genus 3 load on selection and are cached in memory. Switching replaces one WorldScene on the same canvas without reloading the page or moving its scroll position.
+
+The parser reconstructs edges and components from the binary triangles, verifies adjacency and winding, derives Euler characteristic and genus, checks signed volume, validates route ranges and lengths, then cross-checks metadata. Three.js receives validated native arrays only.
 
 ## CPU benchmark methodology
 
-`geodesic_benchmark` uses a Release build, `std::chrono::steady_clock`, double precision, one warm-up query, eight distributed reusable sources, and seven measured Dijkstra runs. It reports mesh generation, operator assembly, factorization, total preprocessing, one Heat Method query, the mean of reused Heat Method queries, Dijkstra query time, and both solve residuals.
+geodesic_benchmark uses a Release build, std::chrono::steady_clock, double precision, one warm-up query, eight distributed reused sources, and seven measured Dijkstra runs. It benchmarks a resolution sequence on Genus 2 and separates mesh generation, operator assembly, factorization, total preprocessing, one Heat Method query, reused Heat Method queries, and Dijkstra.
 
-The checked-in [`data/benchmarks.cpu.json`](data/benchmarks.cpu.json) is the canonical result. Its host, compiler, build type, repetitions, and mesh sizes are stored beside the measurements. These values are not presented as a universal speed comparison. Dijkstra solves an edge-graph problem, while the Heat Method reconstructs a scalar field across the surface. Factorization is most useful when many sources share one mesh.
+The checked-in [data/benchmarks.cpu.json](data/benchmarks.cpu.json) is the canonical measured result. Dijkstra and the Heat Method solve different constrained problems, so the chart is an implementation profile rather than a universal algorithm race.
 
 ## Validation
 
-Native tests cover:
+Native tests cover all three genera: deterministic vertices and faces, finite positions and normals, positive face area, edge and vertex manifold structure, one component, no boundary, opposite shared-edge orientation, positive signed volume, exact Euler characteristic, recovered genus, triangle quality, operator invariants, Heat and Poisson convergence, source zero, native landmarks and routes, deterministic export, metadata agreement, and the complete manifest. Planar and sphere fixtures continue to test numerical machinery independently.
 
-- periodic seam closure and expected torus counts;
-- valid indices, finite geometry, nondegenerate faces, and triangle quality;
-- closed manifold incidence, orientation, no boundary, Euler characteristic zero, and genus one;
-- deterministic generation, source selection, route authoring, and web export;
-- positive mass, Laplacian symmetry, and near-zero row sums;
-- heat and Poisson residuals, finite distance, and source distance near zero;
-- Dijkstra predecessor reconstruction;
-- three distinct native route starts, successful traces, and no published recovery.
+Vitest covers manifest and payload parsing, derived topology, native path ranges, malformed data, lazy caching, and fetch recovery. Playwright covers initial Genus 2 loading, genus switching, route state, the reversible heat toggle, camera inputs, reduced motion, failure recovery, responsive layouts, and the absence of the removed header, progress rail, stage frame, and outline shell.
 
-Vitest checks the binary parser, metadata contract, topology, route measurements, and field consistency. Playwright checks WebGL startup, every route branch, release and replay, comparison mode, orbit and zoom inputs, trackpad-style Explore behavior, focus and reset controls, reduced motion, accessibility state, fallback behavior, dark surfaces, responsive stacking, and horizontal overflow.
+## Foundations and project-specific work
+
+Crane's DDG text supplies the foundations for simplicial surfaces, halfedges, orientation, discrete differential operators, weak forms, cotangent stiffness, mass, Poisson problems, and implicit diffusion. The Heat Method paper supplies the heat-direction-Poisson algorithm, the t proportional to h squared heuristic, and the precomputation strategy.
+
+This repository's implicit multi-handle generator, marching tetrahedra extractor, landmarks, export format, route validation, C++20/Eigen implementation, browser validator, and Three.js presentation are project-specific. They are not attributed to the DDG course.
 
 ## Limitations
 
-- The smooth torus is represented by a finite triangle mesh.
-- Heat Method distances and traced paths are approximations.
-- Accuracy depends on resolution, triangle quality, and the diffusion time scale.
+- Every smooth world is represented by a finite triangle mesh.
+- Heat Method distances and traced paths are approximations, not proofs of exact continuous geodesics.
+- Accuracy depends on resolution, triangle quality, and diffusion time scale.
 - A face tracer can encounter a critical region on an arbitrary field.
-- Edge Dijkstra remains restricted to the mesh graph.
-- A torus can have several nearly equal routes around different sides.
-- The primary procedural surface is validated conservatively, not by a general-purpose continuous collision proof.
-- The implementation intentionally targets CPU execution only.
+- Edge Dijkstra remains restricted to mesh-graph directions.
+- Multi-handle surfaces can have several nearly equal routes in different homotopy classes.
+- The implicit generator is validated discretely; it is not a general continuous collision prover.
+- The implementation intentionally targets CPU execution.
 
 ## Repository map
 
-- `native/include/geodesic/`: mesh, operators, solvers, paths, procedural geometry, and export interfaces
-- `native/src/`: C++20 implementations and CLI
-- `native/tests/`: deterministic geometry and numerical correctness tests
-- `native/benchmarks/`: CPU benchmark executable
-- `scripts/export-web-data.sh`: reproducible website data pipeline
-- `data/`: schema and canonical benchmark JSON
-- `web/src/`: parser, tracer, interaction controller, Three.js scene, and story logic
-- `web/e2e/`: browser behavior and responsive tests
-- `docs/interview-guide.md`: concise technical explanation prompts
-- `docs/course-map.md`: study map from discrete geometry topics to this codebase
+- native/include/geodesic/: mesh, operators, solvers, paths, procedural geometry, and export interfaces
+- native/src/: C++20 implementations and CLI
+- native/tests/: deterministic geometry and numerical correctness tests
+- native/benchmarks/: CPU benchmark executable
+- scripts/export-web-data.sh: reproducible website data pipeline
+- data/: schema and canonical benchmark JSON
+- web/src/: parser, tracer, orbit controller, Three.js scene, and story logic
+- web/e2e/: browser behavior and responsive tests
+- docs/interview-guide.md: technical explanation prompts
+- docs/course-map.md: study map from Crane's material to exact code
 
 ## References
 

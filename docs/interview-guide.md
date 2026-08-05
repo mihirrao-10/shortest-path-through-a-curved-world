@@ -1,233 +1,291 @@
-# Interview Guide: Heat Method Geodesics on a Toroidal Mesh
+# Interview Guide: Heat Method Geodesics on Multi-Handle Worlds
 
-This guide separates the mathematical problem, the numerical implementation, the browser presentation, and the claims supported by measurements.
+This guide separates the mathematical problem, the numerical implementation, the procedural geometry, and the browser presentation.
 
 ## The 30-second explanation
 
-> I implemented the Heat Method for approximate geodesic distance on triangle meshes in C++20. The public example is a genuine closed genus-one torus generated with periodic indexing, not a browser primitive. The solver assembles cotangent and lumped-mass operators with Eigen, diffuses a brief source impulse, normalizes its facewise gradient, and solves a pinned Poisson system for distance. A native tracer follows that field across triangle interiors, while edge Dijkstra supplies a graph-restricted baseline. The static Three.js page visualizes deterministic exported geometry, fields, measurements, and three validated routes. Everything runs on CPU.
+> I implemented the Heat Method for approximate geodesic distance on triangle meshes in C++20 and Eigen. The public site offers native-generated closed surfaces of genus one, two, and three, with a sculptural double torus as the default. C++ extracts and validates each manifold mesh, assembles cotangent and lumped-mass operators, factors the sparse systems, solves heat and Poisson equations, computes edge Dijkstra, traces three official paths across triangle interiors, and exports the complete state. TypeScript independently validates topology and payload consistency, then Three.js renders those native results. Genus changes the world's global topology; the solver remains the same mesh-based numerical method.
 
 ## The two-minute explanation
 
-Start with the constraint. The straight segment between two points is shortest in surrounding three-dimensional space, but it can leave the torus or cut through its tube. A legal route must stay on the surface. Edge Dijkstra respects that broad constraint, but it may only step along mesh edges, so its exact graph solution is not the continuous surface solution.
+The straight segment between two surface points is shortest in surrounding three-dimensional space, but it can cut through a handle or leave the surface. A legal intrinsic route must stay on the surface. Edge Dijkstra respects that broad constraint, but it can move only along triangle edges, so it is exact for the edge graph and directionally biased as an approximation to surface distance.
 
-The native pipeline represents the surface with an oriented halfedge mesh. It assembles a diagonal lumped mass matrix (M) and a positive-semidefinite cotangent stiffness matrix (L\approx-\Delta). For a source impulse (\delta), it solves
+The native pipeline stores an oriented halfedge mesh and assembles a diagonal lumped mass matrix M and a positive-semidefinite cotangent stiffness matrix L approximating -Delta. For source impulse delta it solves
 
-\[
-(M+tL)u=M\delta,
-\qquad t=h^2.
-\]
+    (M + tL)u = M delta, with t = h^2.
 
-The short-time temperature field contains directional distance information. The code computes
+The short-time heat field contains directional distance information. C++ computes the normalized face field
 
-\[
-X=-\nabla u/\lVert\nabla u\rVert
-\]
+    X = -grad(u) / |grad(u)|
 
-per face, then finds a scalar field (\phi) whose gradient best agrees with (X):
+and reconstructs a scalar distance field through a pinned Poisson solve
 
-\[
-L\phi=b_X.
-\]
+    L phi = b_X.
 
-One matrix row and column are pinned to remove the arbitrary additive constant. The final field is shifted so the source value is zero. Both solves report true relative residuals.
+Pinning removes the constant nullspace. The result is shifted so the source distance is zero. Both solves report true relative residuals, and both sparse factorizations are reusable for later sources on the same mesh.
 
-To reconstruct a route, the tracer starts from a face and barycentric point, follows decreasing (\phi), determines which barycentric coordinate reaches zero first, crosses the matching halfedge twin, and repeats. Three torus-aware starts share one source, one Heat Method field, and one Dijkstra tree. The exporter rejects any public route that misses the source or needs recovery.
+A native tracer starts at a barycentric point, follows decreasing phi inside a triangle, determines which barycentric coordinate reaches zero first, crosses the corresponding halfedge twin, and repeats. Three semantic starts share one source, one field, and one Dijkstra tree. The exporter rejects any official route that misses the source, needs fallback, loops, or has implausible measurements.
 
-The browser validates schema version 2 and renders the native geometry. Its camera orbits a stationary world with elapsed-time damping. Mouse, touch, keyboard, and an explicit trackpad Explore mode all reach the same controller state. Reduced-motion mode removes idle orbit and inertial transitions.
+For geometry, C++ forms a smooth implicit neighborhood of a deterministic one-, two-, or three-cycle loop graph and extracts its boundary with marching tetrahedra. Shared grid-edge intersections produce indexed connectivity. Implicit gradients orient triangles outward, mild smoothing and reprojection improve quality, and validation derives Euler characteristic and genus from the final mesh.
 
-## Detailed technical walkthrough
+The browser first loads only a small manifest and Genus 2. It lazily fetches the other bundles on selection, caches them, validates their triangles and metadata, and replaces one scene on the same canvas. It never constructs a fake handle or fake field.
 
-### 1. The three distance problems
+## Why multi-handle surfaces are a strong demonstration
 
-The three displayed lengths have different admissible domains:
+A sphere has simple topology and no handles. A multi-handle world makes the distinction between ambient and intrinsic distance immediately visible and creates competing route classes around different holes. It also shows that the Heat Method is a mesh algorithm rather than a formula specialized to a torus parameterization.
 
-1. The ambient chord may move anywhere in (\mathbb{R}^3).
+The three selectable genera test several layers at once:
+
+- global topology changes while local triangle operators keep the same definition;
+- source and route authoring cannot rely on one rectangular parameter grid;
+- camera framing must adapt to actual geometry;
+- data loading must be metadata-driven;
+- the same solver and tracer must remain robust as the mesh and homotopy structure change.
+
+The stronger demonstration is not that higher genus makes the linear algebra different. It is that the same genus-independent machinery works on three topologically distinct, validated surfaces.
+
+## How topology is validated
+
+For a connected closed orientable triangulation,
+
+    chi = V - E + F = 2 - 2g
+    g = 1 - chi / 2.
+
+C++ builds the mesh and verifies:
+
+- finite vertices and positive-area faces;
+- no duplicate directed edges or duplicate faces;
+- exactly two oppositely oriented faces per edge;
+- one connected component and no boundary;
+- one cyclic incident triangle fan at every vertex;
+- positive signed volume for outward global orientation;
+- exact chi and recovered genus matching the request.
+
+The browser does not trust metadata blindly. It rebuilds the undirected edge map and face components from the binary triangles, checks adjacency and winding, recomputes chi, genus, boundary count, and signed volume, then compares those values with metadata.
+
+## What changes when genus changes
+
+These items are regenerated and refactored:
+
+- implicit geometry and extracted topology;
+- bounds, center, normals, and quality metrics;
+- semantic landmark SurfacePoints;
+- source vertex and all field samples;
+- mass and stiffness matrices;
+- heat and Poisson factorizations;
+- Heat Method and Dijkstra fields;
+- official path polylines and route measurements;
+- camera framing and route controls.
+
+These concepts remain independent of genus:
+
+- halfedge semantics;
+- face basis gradients;
+- mass and cotangent stiffness assembly;
+- backward Euler heat diffusion;
+- normalized gradient direction;
+- weak Poisson reconstruction;
+- sparse factor reuse within one mesh;
+- edge Dijkstra as a baseline;
+- barycentric face-interior tracing;
+- the binary parser's invariant checks.
+
+## Detailed numerical walkthrough
+
+### The three distance problems
+
+1. The ambient chord may move anywhere in R3.
 2. Edge Dijkstra may move only along graph edges.
-3. The Heat trace may cross triangle interiors but must remain on the triangulated surface.
+3. The Heat trace may cross triangle interiors but must stay on the triangulated surface.
 
-A smaller chord does not invalidate the surface result. It answers a less constrained problem. Dijkstra is exact on its graph, but the graph introduces directional bias. The Heat trace approximates intrinsic distance on the discretized surface.
+A smaller chord answers a less constrained problem. Dijkstra is exact in a more restricted domain. The Heat route approximates intrinsic distance on the discrete surface and is not proof of the exact continuous geodesic.
 
-### 2. Why the torus topology matters
+### Halfedge representation
 
-The primary mesh samples periodic angles (u) and (v). Indices wrap in both directions, so no seam vertex is duplicated. Every periodic quad contributes two triangles with analytic parameter-space winding.
+Each triangular face owns three directed halfedges. A halfedge stores origin, next, twin, edge, and face:
 
-For the default mesh:
-
-- (V=160\cdot64=10{,}240);
-- (F=2V=20{,}480);
-- every undirected edge has two incident faces;
-- there is no boundary;
-- (V-E+F=0);
-- for a connected closed orientable surface, (\chi=2-2g), so (g=1).
-
-The origin is not a valid global orientation reference for a torus. A normal on the inner tube can legitimately point partly toward the origin. The generator therefore fixes triangle order analytically and tests normals against the local outward tube direction from the centerline.
-
-The smooth deformation uses periodic low-frequency terms. It adds an outer ridge, a localized basin and rim, a saddle-like inner throat, unequal thickness, and a broad warp without changing connectivity.
-
-### 3. Halfedge representation
-
-Each triangular face owns three directed halfedges. A halfedge stores its origin, next halfedge, twin, edge, and face. This makes the operations used by the tracer local:
-
-- three `next` steps traverse a face;
-- `twin` crosses a shared edge;
+- three next steps traverse a face;
+- twin crosses a shared edge;
 - a missing twin identifies a boundary;
-- directed shared edges make orientation explicit.
+- opposite directed shared edges make orientation explicit.
 
-Construction rejects invalid indices, repeated triangle vertices, degenerate area, duplicate directed edges, nonmanifold edge incidence, inconsistent shared-edge orientation, broken face cycles, and invalid vertex incidence.
+Construction rejects invalid indices, repeated triangle vertices, small or non-finite area, duplicate directed edges, more than two faces on an edge, broken cycles, invalid twins, and disconnected vertex fans.
 
-### 4. Discrete geometry and operators
+### Discrete geometry and operators
 
-For a triangle ((p_0,p_1,p_2)),
+For triangle p0, p1, p2:
 
-\[
-2A=\lVert(p_1-p_0)\times(p_2-p_0)\rVert,
-\qquad
-n=\frac{(p_1-p_0)\times(p_2-p_0)}{2A}.
-\]
+    2A = |(p1 - p0) cross (p2 - p0)|
+    n = ((p1 - p0) cross (p2 - p0)) / (2A).
 
-The gradients of its piecewise-linear barycentric basis functions are
+The piecewise-linear barycentric basis gradients are constant within the triangle. For a vertex field u,
 
-\[
-\nabla b_0=\frac{n\times(p_2-p_1)}{2A},\quad
-\nabla b_1=\frac{n\times(p_0-p_2)}{2A},\quad
-\nabla b_2=\frac{n\times(p_1-p_0)}{2A}.
-\]
+    grad(u)_f = sum_i u_i grad(b_i).
 
-A vertex field has constant face gradient (\nabla u_f=\sum_i u_i\nabla b_i). The local stiffness matrix is
+The local stiffness is
 
-\[
-L^f_{ij}=A_f\,\nabla b_i\cdot\nabla b_j.
-\]
+    L^f_ij = A_f grad(b_i) dot grad(b_j),
 
-This is equivalent to cotangent weights. For an interior edge,
+equivalent to cotangent weights. Local energy assembly makes symmetry and zero row sums explicit. Obtuse triangles may contribute an individual negative cotangent; the implementation does not silently clamp it.
 
-\[
-w_{ij}=\tfrac12(\cot\alpha_{ij}+\cot\beta_{ij}).
-\]
+The lumped mass assigns A_f / 3 to each face vertex, so every valid closed-mesh vertex receives positive mass.
 
-Local energy assembly makes symmetry and constant row sums explicit. Obtuse triangles may contribute a negative individual cotangent; the implementation does not silently clamp it. The lumped mass is (M_{ii}=\sum_{f\ni i}A_f/3), so every valid vertex has positive mass.
+### Heat solve
 
-### 5. Heat solve
+Backward Euler produces M + tL because L uses the positive stiffness convention. The source right-hand side represents a unit impulse. The practical choice t = h^2 ties diffusion distance to mesh scale.
 
-Backward Euler gives ((M+tL)u=M\delta). With the positive stiffness convention, the plus sign is required. The source vector is scaled so (M\delta) represents a unit impulse. Choosing (t=h^2) ties diffusion distance to mesh resolution.
+Heat is largest near the source, so grad(u) points toward hotter values. Its negative points approximately toward increasing distance. Normalization discards magnitude decay while preserving direction. Genuinely vanishing gradients are counted in metadata.
 
-Heat is largest near the source, so (\nabla u) points toward hotter values. Its negative points approximately in the direction of increasing distance. Normalization discards magnitude decay while preserving direction. Faces with genuinely vanishing gradients are counted and reported.
+### Weak Poisson reconstruction
 
-### 6. Poisson reconstruction
+Independently normalized face vectors need not integrate to one exact scalar function. The weak load is
 
-The independently normalized face vectors do not generally integrate to one exact scalar function. The weak load is
+    (b_X)_i = sum over incident faces of A_f grad(b_i) dot X_f.
 
-\[
-(b_X)_i=\sum_{f\ni i}A_f\,\nabla b_i\cdot X_f.
-\]
+Solving L phi = b_X finds the finite-element scalar field whose gradient best agrees with the direction field. Constants lie in the nullspace because gradients cannot detect a global offset. Pinning one value makes the factorization nonsingular; subtracting the source value establishes distance zero.
 
-Solving (L\phi=b_X) finds the finite-element scalar field whose gradient best matches the directions. Constants lie in the nullspace because gradients cannot detect a global offset. A pinned reference removes that degree of freedom, after which subtracting the source value establishes distance zero.
+### Reusable sparse solves
 
-### 7. Reusable sparse solves
+HeatMethodSolver records and separates:
 
-`HeatMethodSolver` separates four costs:
-
-1. mesh operator assembly;
+1. operator assembly;
 2. heat and pinned-Poisson factorization;
-3. a source-dependent heat solve and direction assembly;
+3. a source-dependent heat solve and face directions;
 4. a source-dependent Poisson solve.
 
-The direct path uses `Eigen::SimplicialLDLT`. The iterative path uses conjugate gradient with incomplete Cholesky. The direct factors are reused across source queries on the same mesh. Both paths calculate (\lVert Ax-b\rVert_2/\max(\lVert b\rVert_2,10^{-30})) from the returned solution.
+The direct path uses Eigen::SimplicialLDLT. The iterative option uses conjugate gradient with incomplete Cholesky. The factors are reusable only while the mesh and time scale stay fixed. Changing genus replaces the mesh, so preprocessing must run again.
 
-### 8. Face-interior path tracing
+Both solve reports calculate
 
-Within a face, (\phi) is linear and (\nabla\phi) is constant. The tracer converts (-\nabla\phi) into barycentric coordinate velocities, finds the first positive time at which one barycentric coordinate reaches zero, advances to that edge, and enters the neighboring face.
+    ||Ax - b||_2 / max(||b||_2, 1e-30)
 
-The implementation guards against repeated faces, vanishing gradients, invalid barycentric values, boundary exits, and excessive steps. A general recovery path can descend through a one-ring at a critical region, but a public route is invalid if recovery is used. That distinction prevents a visually plausible polyline from being presented as a successful face trace.
+from the returned solution.
 
-### 9. Native route authoring
+### Face-interior route tracing
 
-Direction from the origin is ambiguous on a torus, especially around the inner ring. The source and route candidates are defined in toroidal parameter space. Candidate faces near each target receive deterministic barycentric starts, then native validation checks:
+Within a triangle phi is linear and grad(phi) is constant. The tracer converts -grad(phi) into barycentric coordinate velocities, finds the first positive time at which one coordinate reaches zero, moves to that edge, and enters the adjacent face.
 
-- the trace reaches the shared source;
-- no recovery is used;
-- all measurements are finite;
-- the surface trace is longer than the ambient chord;
-- the trace remains within a conservative ratio of edge Dijkstra;
-- starts and route lengths are distinct.
+Guards detect repeated faces, vanishing gradients, non-finite or invalid barycentric states, boundary exits, and excessive steps. A generic monotone one-ring recovery exists for arbitrary inputs, but an official route is invalid when it is used.
 
-The published routes are Ridge crossing, Inner saddle pass, and Basin rim.
+## Project-specific geometry walkthrough
 
-### 10. Deterministic export
+The surface generator is not presented as part of Crane's DDG course.
 
-The exporter writes compact indexed geometry, adjacency, heat states, distances, Dijkstra predecessors, gradient samples, source data, route measurements, topology, quality, and residuals. Heat values are stored as per-frame `log(u)` quantized to `uint16`; the per-frame logarithmic range is stored as `float64`.
+1. A deterministic implicit field describes a smooth union of rounded loop tubes.
+2. Cycle rank one, two, or three sets the intended topology.
+3. Low-frequency modulation changes lobe scale, tube radius, ridge, basin, neck compression, and height without random vertex noise.
+4. A fixed six-tetrahedra cube split extracts the zero set.
+5. A cache gives adjacent tetrahedra the same interpolated grid-edge vertex.
+6. The implicit gradient fixes outward triangle winding.
+7. Duplicate and degenerate faces are removed.
+8. Tangential smoothing improves triangle placement and projection restores the level set.
+9. Native topology and quality checks accept or reject the result.
+10. World-space landmark anchors are mapped to valid nearby SurfacePoints.
 
-Machine-specific timing is not stored in the world metadata. A separate benchmark document records the host and methodology. Native tests export twice and compare the complete files byte for byte.
+The default Genus 2 world is designed as two unequal rounded lobes sharing a smooth central neck, so both holes read from the opening camera.
 
-### 11. Browser interaction
+## Native route authoring and export
 
-The Three.js world remains stationary. `OrbitController` owns target, azimuth, elevation, distance, desired state, and current state. It uses exponential damping based on elapsed time, so the same motion model behaves similarly at 60 Hz and 120 Hz.
+Outer ridge, Central neck, and Basin rim are semantic world-space landmarks, not toroidal u-v coordinates. C++ maps them to face and barycentric starts, searches local candidates when needed, and validates:
 
-- Primary drag and one-finger drag orbit with pointer capture.
-- Two touch pointers combine centroid orbit and pinch distance.
-- Explore mode maps trackpad horizontal and vertical wheel deltas to orbit.
-- Control-wheel pinch and Safari gesture events map to smooth zoom.
-- Outside Explore mode, vertical wheel input keeps ordinary page scrolling.
-- Arrow keys orbit, plus and minus zoom, and R resets.
-- Escape and window blur release Explore mode.
-- Buttons reset, focus the beacon, and focus the route start.
+- successful source arrival without recovery;
+- several native polyline points;
+- finite positive values;
+- ambient chord shorter than legal surface paths;
+- conservative Heat-to-Dijkstra ratio;
+- distinct start positions and route measurements.
 
-Idle orbit stops on input and during focus transitions. Authored chapter poses are ignored briefly after manual input. Reduced-motion mode disables idle orbit and snaps or greatly shortens transitions.
+Binary schema v3 stores one concatenated native-path point array. Metadata gives each route's offset and count. It also records source SurfacePoint, topology, signed volume, bounds, quality, residuals, and solver conventions.
+
+## What C++ owns and what the browser owns
+
+### C++ owns
+
+- procedural geometry and topology;
+- halfedge connectivity and invariant validation;
+- normals, quality, bounds, and landmarks;
+- sparse operators and factorizations;
+- Heat Method and Dijkstra fields;
+- heat animation frames and vector samples;
+- official route tracing and measurements;
+- deterministic binary, metadata, and manifest export.
+
+### TypeScript owns
+
+- fetching the manifest and selected native bundle;
+- caching successful lazy loads;
+- independently validating binary and metadata consistency;
+- rebuilding controls from route metadata;
+- presenting narrative and accessible state;
+- retaining a browser tracer as a diagnostic cross-check.
+
+### Three.js owns
+
+- indexed rendering of validated native arrays;
+- lighting, heat colors, markers, and route geometry;
+- camera presentation and interaction;
+- disposal when a genus changes.
+
+Three.js does not own the surface definition, field computation, official path, or official measurements.
+
+## Browser interaction
+
+OrbitController owns target, azimuth, elevation, distance, desired state, and current state. It uses elapsed-time exponential damping:
+
+- mouse and one-finger drag orbit with pointer capture;
+- two touch pointers combine centroid orbit and pinch;
+- Explore view maps trackpad wheel deltas to orbit;
+- control-wheel and Safari gesture input zoom;
+- outside Explore view, ordinary vertical wheel input scrolls the page;
+- arrow keys orbit, plus and minus zoom, R resets, and Escape exits Explore view;
+- controls focus the beacon or active route start;
+- reduced motion disables idle movement and jumps heat directly to its final exported frame.
+
+Changing genus destroys the old scene, reuses the same canvas, loads or retrieves the selected native bundle, resets transient state, and frames the actual bounding sphere without moving the page.
 
 ## Benchmark claims
 
-The checked-in CPU benchmark records a Release build, compiler, hardware label, `steady_clock`, double precision, one warm-up, eight distributed reused sources, seven Dijkstra repetitions, and residuals. It reports assembly and factorization separately from source queries.
+The checked-in CPU benchmark records a Release build, compiler, host label, steady clock, double precision, one warm-up, eight distributed reused sources, seven Dijkstra repetitions, and residuals. It measures Genus 2 across a resolution sequence and reports generation, assembly, factorization, total preprocessing, one Heat query, reused Heat queries, and Dijkstra separately.
 
-Do not describe the benchmark as a universal comparison between algorithms. Dijkstra and the Heat Method solve different constrained problems. Also do not combine preprocessing and query time without saying whether factors are reused.
+Do not describe it as a universal race. Dijkstra solves an edge-graph shortest-path problem. The Heat Method constructs an approximate surface-distance field. Preprocessing should not be charged to every later source when factors are reused.
 
 ## Limitations to state plainly
 
-- The torus is a finite mesh approximation to a smooth surface.
-- The Heat Method result is approximate.
-- Cotangent operators depend on triangle quality.
-- The diffusion scale influences error.
-- The face tracer can encounter critical regions on arbitrary data.
+- Each world is a finite mesh approximation to a smooth implicit surface.
+- Heat Method distance and the traced polyline are approximate.
+- Triangle quality and the diffusion scale influence error.
+- A tracer can encounter critical regions on arbitrary fields.
 - Dijkstra is restricted to edge directions.
-- A genus-one surface can offer multiple nearly equal routes.
-- The browser trace is not claimed to be an exact continuous geodesic.
-- The project intentionally uses CPU computation only.
-
-## Useful code-reading order
-
-1. `native/include/geodesic/types.hpp`
-2. `native/src/mesh.cpp`
-3. `native/src/operators.cpp`
-4. `native/src/heat_method.cpp`
-5. `native/src/dijkstra.cpp`
-6. `native/src/path.cpp`
-7. `native/src/procedural.cpp`
-8. `native/src/io.cpp`
-9. `web/src/world-data.ts`
-10. `web/src/orbit-controller.ts`
-11. `web/src/world-scene.ts`
+- Multiple homotopy classes can have nearly equal route lengths.
+- Discrete topology checks do not constitute a general continuous collision proof.
+- CPU computation is an intentional scope decision.
 
 ## Common questions
 
-### Why not use built-in torus geometry in Three.js?
+### Why not use Three.js torus geometry or browser CSG?
 
-That would disconnect the picture from the numerical mesh. The browser must render the same vertices, triangles, source, field, and routes produced by C++.
+That would disconnect the figure from the numerical mesh. The visible vertices, topology, source, fields, routes, and measurements must be the state C++ solved.
 
-### Why is Dijkstra useful if it is not the target answer?
+### Why does the Heat Method apply when genus changes?
 
-It is deterministic, exact on the edge graph, easy to reconstruct from predecessors, and exposes directional bias caused by restricting movement to edges.
+The finite-element operators are local to triangles and their incidence. Genus changes global connectivity, spectrum, landmarks, and paths, but not the definitions of mass, stiffness, gradient, weak divergence, or the heat and Poisson steps.
 
-### Why pin the Poisson system?
+### Why use Dijkstra if it is not the target answer?
 
-Adding a constant to every distance leaves its gradient unchanged. Pinning one value gives the linear system a unique representative. Shifting afterward places zero at the source.
+It is deterministic, exact on the edge graph, easy to reconstruct from predecessors, and exposes the directional restriction caused by moving only along mesh edges.
 
-### Why use (t=h^2)?
+### Why pin Poisson?
 
-Diffusion time has units of length squared. Scaling by mean edge length squared makes the pulse duration track mesh scale, following the practical recommendation in the Heat Method.
+Adding a constant to every distance does not change its gradient. Pinning selects one representative so the sparse system can be factored. A final shift puts zero at the source.
 
-### How do you know the primary mesh is a torus?
+### Why t = h squared?
 
-Its construction is periodic in two independent directions, it is connected, closed, orientable, and has Euler characteristic zero. Those invariants imply genus one.
+Diffusion time has units of length squared. Scaling by mean edge length squared makes the pulse duration track mesh scale, following the Heat Method's practical recommendation.
 
-### What result should not be overstated?
+### How do you know each requested genus is real?
 
-The traced polyline approximates a geodesic on a discrete surface. It is not proof of the exact smooth shortest path, especially when several homotopy classes have similar lengths.
+C++ and the browser independently build the edge set from the extracted faces, compute chi = V - E + F, verify connectedness and closure, then recover g = 1 - chi / 2. Metadata is compared with that derived result.
+
+### What should never be overstated?
+
+The official native polyline approximates a geodesic on a discrete surface. It is not proof of the exact shortest path on the underlying smooth world, especially when several route classes have similar lengths.

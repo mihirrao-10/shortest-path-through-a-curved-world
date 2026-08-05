@@ -19,7 +19,7 @@ void writeScalarCsv(const Vector& values, const std::filesystem::path& path,
 void writePathObj(const std::vector<Vec3>& points, const std::filesystem::path& path);
 
 struct WebExportOptions {
-  TorusOptions torus{};
+  CurvedWorldOptions world{};
   Index sourceVertex{kInvalidIndex};
   std::vector<double> heatTimeMultipliers{0.25, 1.0, 4.0, 16.0, 64.0, 256.0};
 };
@@ -35,18 +35,22 @@ struct WebRoutePreset {
   double tracedHeatMethodRouteLength{0.0};
   bool tracingReachedSource{false};
   bool fallbackUsed{false};
+  std::size_t nativePathOffset{0};
   std::vector<Vec3> tracedPoints;
   std::vector<Index> edgeVertices;
 };
 
-std::vector<WebRoutePreset>
-buildCurvedWorldRoutePresets(const TriangleMesh& mesh, const HeatMethodSolver& solver,
-                             const HeatMethodResult& heat, const DijkstraResult& dijkstra,
-                             Index sourceVertex, const TorusOptions& options = {});
+std::vector<WebRoutePreset> buildCurvedWorldRoutePresets(const GeneratedCurvedWorld& world,
+                                                         const HeatMethodSolver& solver,
+                                                         const HeatMethodResult& heat,
+                                                         const DijkstraResult& dijkstra,
+                                                         Index sourceVertex);
 
 struct WebExportReport {
   std::filesystem::path binaryPath;
   std::filesystem::path metadataPath;
+  int genus{0};
+  long long eulerCharacteristic{0};
   std::size_t vertexCount{0};
   std::size_t faceCount{0};
   Index sourceVertex{kInvalidIndex};
@@ -59,5 +63,7 @@ struct WebExportReport {
 
 WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
                                   const WebExportOptions& options = {});
+std::vector<WebExportReport> exportAllCurvedWorlds(const std::filesystem::path& outputDirectory,
+                                                   const WebExportOptions& options = {});
 
 } // namespace geodesic

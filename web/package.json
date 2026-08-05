@@ -12,6 +12,7 @@
     "lint": "eslint . --max-warnings 0",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
+    "capture:visuals": "node scripts/capture-visuals.mjs",
     "test:e2e": "playwright test",
     "check": "npm run format:check && npm run lint && npm test && npm run build"
   },

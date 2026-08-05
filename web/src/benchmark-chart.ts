@@ -1,6 +1,5 @@
 interface BenchmarkCase {
-  majorSegments: number;
-  minorSegments: number;
+  resolution: number;
   vertices: number;
   faces: number;
   meshMilliseconds: number;
@@ -16,6 +15,7 @@ interface BenchmarkCase {
 
 interface BenchmarkData {
   schema: string;
+  worldGenus: number;
   clock: string;
   precision: string;
   warmupQueries: number;
@@ -66,7 +66,11 @@ export async function renderBenchmarkChart(
   if (!response.ok)
     throw new Error(`Benchmark request failed (${response.status})`);
   const data = (await response.json()) as BenchmarkData;
-  if (data.schema !== "geodesic-benchmark-v2" || data.cases.length < 2) {
+  if (
+    data.schema !== "geodesic-benchmark-v3" ||
+    data.worldGenus !== 2 ||
+    data.cases.length < 2
+  ) {
     throw new Error("Benchmark schema is invalid");
   }
 
@@ -129,17 +133,17 @@ export async function renderBenchmarkChart(
     {
       key: (entry: BenchmarkCase) => entry.preprocessingMilliseconds,
       className: "chart-line-preprocess",
-      color: "#4d837b",
+      color: "#dedede",
     },
     {
       key: (entry: BenchmarkCase) => entry.meanReusedHeatQueryMilliseconds,
       className: "chart-line-query",
-      color: "#f4b65e",
+      color: "#999999",
     },
     {
       key: (entry: BenchmarkCase) => entry.dijkstraQueryMilliseconds,
       className: "chart-line-dijkstra",
-      color: "#d7a8ff",
+      color: "#5f5f5f",
     },
   ];
   for (const item of series) {
@@ -165,7 +169,7 @@ export async function renderBenchmarkChart(
 
   const largest = data.cases.at(-1)!;
   caption.textContent =
-    `Measured locally in double precision: ${largest.faces.toLocaleString()} faces, ` +
+    `Measured locally on the Genus 2 world in double precision: resolution ${largest.resolution}, ${largest.faces.toLocaleString()} faces, ` +
     `${largest.preprocessingMilliseconds.toFixed(1)} ms preprocessing, ` +
     `${largest.meanReusedHeatQueryMilliseconds.toFixed(2)} ms mean reused Heat Method query, and ` +
     `${largest.dijkstraQueryMilliseconds.toFixed(2)} ms edge-Dijkstra query ` +

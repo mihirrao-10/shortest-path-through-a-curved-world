@@ -1,27 +1,82 @@
-export interface WorldMetadata {
-  schema: string;
-  title: string;
-  deterministicSeed: number;
-  mesh: {
-    kind: "procedural-torus";
-    majorSegments: number;
-    minorSegments: number;
-    majorRadius: number;
-    minorRadius: number;
-    relief: number;
-  };
+export type SupportedGenus = 1 | 2 | 3;
+export type RoutePresetId = string;
+
+export interface WorldManifestEntry {
+  genus: SupportedGenus;
+  label: string;
+  accessibleLabel: string;
+  binary: string;
+  metadata: string;
+  binaryBytes: number;
   vertices: number;
   faces: number;
+}
+
+export interface WorldManifest {
+  schema: "geodesic-world-manifest-v1";
+  binarySchemaVersion: 3;
+  defaultGenus: 2;
+  supportedGenera: readonly [1, 2, 3];
+  worlds: WorldManifestEntry[];
+}
+
+export interface SurfacePointMetadata {
+  face: number;
+  barycentric: readonly [number, number, number];
+}
+
+export interface RoutePreset {
+  id: RoutePresetId;
+  label: string;
+  description: string;
+  start: SurfacePointMetadata;
+  dijkstraStartVertex: number;
+  ambientChordLength: number;
+  edgeDijkstraRouteLength: number;
+  tracedHeatMethodRouteLength: number;
+  tracingReachedSource: true;
+  fallbackUsed: false;
+  nativePathOffset: number;
+  nativePathCount: number;
+}
+
+export interface WorldMetadata {
+  schema: "geodesic-world-v3";
+  title: string;
+  accessibleLabel: string;
+  mesh: {
+    kind: "implicit-thickened-loop-graph";
+    genus: SupportedGenus;
+    resolution: number;
+    tubeRadius: number;
+    relief: number;
+    seed: number;
+  };
+  vertices: number;
+  edges: number;
+  faces: number;
+  bounds: { center: readonly [number, number, number]; radius: number };
   sourceVertex: number;
-  source: { vertex: number; u: number; v: number; label: string };
+  source: {
+    label: string;
+    surfacePoint: SurfacePointMetadata;
+    anchor: readonly [number, number, number];
+  };
   topology: {
     closed: true;
     orientedManifold: true;
+    connectedComponents: 1;
     boundaryEdges: 0;
-    eulerCharacteristic: 0;
-    genus: 1;
+    eulerCharacteristic: number;
+    genus: SupportedGenus;
+    signedVolume: number;
   };
-  quality: { minimumAngleDegrees: number; maximumAspectRatio: number };
+  quality: {
+    minimumAngleDegrees: number;
+    onePercentileAngleDegrees: number;
+    maximumAspectRatio: number;
+    minimumFaceArea: number;
+  };
   meanEdgeLength: number;
   heatMethodTimeStep: number;
   laplacianSign: string;
@@ -38,24 +93,7 @@ export interface WorldMetadata {
     direct: string;
     iterative: string;
   };
-  reference: string;
-}
-
-export type RoutePresetId =
-  "ridge-crossing" | "inner-saddle-pass" | "basin-rim";
-
-export interface RoutePreset {
-  id: RoutePresetId;
-  label: string;
-  description: string;
-  startFace: number;
-  startBarycentric: readonly [number, number, number];
-  dijkstraStartVertex: number;
-  ambientChordLength: number;
-  edgeDijkstraRouteLength: number;
-  tracedHeatMethodRouteLength: number;
-  tracingReachedSource: boolean;
-  fallbackUsed: boolean;
+  references: string[];
 }
 
 export interface GradientSample {
@@ -64,12 +102,30 @@ export interface GradientSample {
   direction: readonly [number, number, number];
 }
 
+export interface DerivedTopology {
+  edges: number;
+  connectedComponents: number;
+  boundaryEdges: number;
+  eulerCharacteristic: number;
+  recoveredGenus: number;
+  signedVolume: number;
+}
+
+export interface DerivedMeshQuality {
+  minimumAngleDegrees: number;
+  onePercentileAngleDegrees: number;
+  maximumAspectRatio: number;
+  minimumFaceArea: number;
+}
+
 export interface WorldData {
-  version: number;
+  version: 3;
   vertexCount: number;
   faceCount: number;
   heatFrameCount: number;
   sourceVertex: number;
+  routePointCount: number;
+  routeCount: number;
   meanEdgeLength: number;
   timeStep: number;
   frameTimes: Float64Array;
@@ -84,11 +140,24 @@ export interface WorldData {
   dijkstraPredecessor: Uint32Array;
   heatFrames: Uint16Array[];
   gradientSamples: GradientSample[];
+  nativeRoutePoints: Float32Array;
   vertexNeighbors: number[][];
+  derivedTopology: DerivedTopology;
+  derivedQuality: DerivedMeshQuality;
+  derivedBounds: {
+    center: readonly [number, number, number];
+    radius: number;
+  };
 }
 
-const MAGIC = "GEOWRLD2";
-const ROUTE_IDS = ["ridge-crossing", "inner-saddle-pass", "basin-rim"] as const;
+export interface WorldBundle {
+  data: WorldData;
+  metadata: WorldMetadata;
+  manifestEntry: WorldManifestEntry;
+}
+
+const MAGIC = "GEOWRLD3";
+const SUPPORTED_GENERA = [1, 2, 3] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -98,28 +167,112 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isSupportedGenus(value: unknown): value is SupportedGenus {
+  return value === 1 || value === 2 || value === 3;
+}
+
+function parseVector3(value: unknown, label: string): [number, number, number] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    !value.every(isFiniteNumber)
+  ) {
+    throw new Error(`${label} must be a finite three-vector`);
+  }
+  return [value[0] as number, value[1] as number, value[2] as number];
+}
+
+function parseSurfacePoint(
+  value: unknown,
+  data: WorldData,
+  label: string,
+): SurfacePointMetadata {
+  if (!isRecord(value)) throw new Error(`${label} is invalid`);
+  const barycentric = value.barycentric;
+  if (
+    !Number.isInteger(value.face) ||
+    (value.face as number) < 0 ||
+    (value.face as number) >= data.faceCount ||
+    !Array.isArray(barycentric) ||
+    barycentric.length !== 3 ||
+    !barycentric.every(isFiniteNumber) ||
+    barycentric.some((weight) => weight < 0 || weight > 1) ||
+    Math.abs(barycentric.reduce((sum, weight) => sum + weight, 0) - 1) > 1e-8
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+  return {
+    face: value.face as number,
+    barycentric: barycentric as [number, number, number],
+  };
+}
+
+function surfacePointPosition(
+  data: WorldData,
+  point: SurfacePointMetadata,
+): [number, number, number] {
+  const result: [number, number, number] = [0, 0, 0];
+  for (let local = 0; local < 3; local += 1) {
+    const vertex = data.indices[3 * point.face + local]!;
+    for (let axis = 0; axis < 3; axis += 1) {
+      result[axis] =
+        result[axis]! +
+        point.barycentric[local]! * data.positions[3 * vertex + axis]!;
+    }
+  }
+  return result;
+}
+
+function distance3(
+  first: ArrayLike<number>,
+  second: ArrayLike<number>,
+): number {
+  return Math.hypot(
+    first[0]! - second[0]!,
+    first[1]! - second[1]!,
+    first[2]! - second[2]!,
+  );
+}
+
+function nativePathLength(
+  data: WorldData,
+  offset: number,
+  count: number,
+): number {
+  let length = 0;
+  for (let point = 1; point < count; point += 1) {
+    const first = 3 * (offset + point - 1);
+    const second = 3 * (offset + point);
+    length += Math.hypot(
+      data.nativeRoutePoints[second]! - data.nativeRoutePoints[first]!,
+      data.nativeRoutePoints[second + 1]! - data.nativeRoutePoints[first + 1]!,
+      data.nativeRoutePoints[second + 2]! - data.nativeRoutePoints[first + 2]!,
+    );
+  }
+  return length;
+}
+
 function parseRoutePresets(value: unknown, data: WorldData): RoutePreset[] {
-  if (!Array.isArray(value) || value.length !== ROUTE_IDS.length) {
+  if (!Array.isArray(value) || value.length !== 3 || data.routeCount !== 3) {
     throw new Error("World metadata must contain three route presets");
   }
-  return value.map((candidate, index) => {
+  let expectedOffset = 0;
+  const ids = new Set<string>();
+  const routes = value.map((candidate, index) => {
     if (!isRecord(candidate)) throw new Error("World route preset is invalid");
-    const barycentric = candidate.startBarycentric;
+    const start = parseSurfacePoint(
+      candidate.start,
+      data,
+      `World route preset ${index + 1} start`,
+    );
     if (
-      candidate.id !== ROUTE_IDS[index] ||
+      typeof candidate.id !== "string" ||
+      candidate.id.length === 0 ||
+      ids.has(candidate.id) ||
       typeof candidate.label !== "string" ||
       candidate.label.length === 0 ||
       typeof candidate.description !== "string" ||
       candidate.description.length === 0 ||
-      !Number.isInteger(candidate.startFace) ||
-      (candidate.startFace as number) < 0 ||
-      (candidate.startFace as number) >= data.faceCount ||
-      !Array.isArray(barycentric) ||
-      barycentric.length !== 3 ||
-      !barycentric.every(isFiniteNumber) ||
-      barycentric.some((weight) => weight < 0 || weight > 1) ||
-      Math.abs(barycentric.reduce((sum, weight) => sum + weight, 0) - 1) >
-        1e-8 ||
       !Number.isInteger(candidate.dijkstraStartVertex) ||
       (candidate.dijkstraStartVertex as number) < 0 ||
       (candidate.dijkstraStartVertex as number) >= data.vertexCount ||
@@ -127,126 +280,127 @@ function parseRoutePresets(value: unknown, data: WorldData): RoutePreset[] {
       !isFiniteNumber(candidate.edgeDijkstraRouteLength) ||
       !isFiniteNumber(candidate.tracedHeatMethodRouteLength) ||
       candidate.ambientChordLength <= 0 ||
-      candidate.edgeDijkstraRouteLength <= 0 ||
-      candidate.tracedHeatMethodRouteLength <= 0 ||
       candidate.edgeDijkstraRouteLength <= candidate.ambientChordLength ||
       candidate.tracedHeatMethodRouteLength <= candidate.ambientChordLength ||
       candidate.tracedHeatMethodRouteLength >
         1.25 * candidate.edgeDijkstraRouteLength ||
       candidate.tracingReachedSource !== true ||
-      candidate.fallbackUsed !== false
+      candidate.fallbackUsed !== false ||
+      !Number.isInteger(candidate.nativePathOffset) ||
+      candidate.nativePathOffset !== expectedOffset ||
+      !Number.isInteger(candidate.nativePathCount) ||
+      (candidate.nativePathCount as number) < 4 ||
+      expectedOffset + (candidate.nativePathCount as number) >
+        data.routePointCount
     ) {
-      throw new Error(`World route preset ${ROUTE_IDS[index]} is invalid`);
+      throw new Error(`World route preset ${index + 1} is invalid`);
     }
-    const id = ROUTE_IDS[index]!;
-    return {
-      id,
+    ids.add(candidate.id);
+    const route: RoutePreset = {
+      id: candidate.id,
       label: candidate.label,
       description: candidate.description,
-      startFace: candidate.startFace as number,
-      startBarycentric: barycentric as [number, number, number],
+      start,
       dijkstraStartVertex: candidate.dijkstraStartVertex as number,
       ambientChordLength: candidate.ambientChordLength,
       edgeDijkstraRouteLength: candidate.edgeDijkstraRouteLength,
       tracedHeatMethodRouteLength: candidate.tracedHeatMethodRouteLength,
-      tracingReachedSource: candidate.tracingReachedSource,
-      fallbackUsed: candidate.fallbackUsed,
+      tracingReachedSource: true,
+      fallbackUsed: false,
+      nativePathOffset: candidate.nativePathOffset,
+      nativePathCount: candidate.nativePathCount as number,
     };
+    const startPosition = surfacePointPosition(data, start);
+    const nativeStart = data.nativeRoutePoints.subarray(
+      3 * route.nativePathOffset,
+      3 * route.nativePathOffset + 3,
+    );
+    const finalOffset =
+      3 * (route.nativePathOffset + route.nativePathCount - 1);
+    const nativeEnd = data.nativeRoutePoints.subarray(
+      finalOffset,
+      finalOffset + 3,
+    );
+    const source = data.positions.subarray(
+      3 * data.sourceVertex,
+      3 * data.sourceVertex + 3,
+    );
+    const measuredLength = nativePathLength(
+      data,
+      route.nativePathOffset,
+      route.nativePathCount,
+    );
+    if (
+      distance3(startPosition, nativeStart) > data.meanEdgeLength * 0.12 ||
+      distance3(source, nativeEnd) > data.meanEdgeLength * 0.12 ||
+      Math.abs(measuredLength - route.tracedHeatMethodRouteLength) >
+        Math.max(2e-4, route.tracedHeatMethodRouteLength * 2e-5)
+    ) {
+      throw new Error(`Native path payload does not match route ${route.id}`);
+    }
+    expectedOffset += route.nativePathCount;
+    return route;
   });
+  if (expectedOffset !== data.routePointCount) {
+    throw new Error("Native route point ranges do not cover the payload");
+  }
+  return routes;
 }
 
-export function parseWorldMetadata(
-  value: unknown,
-  data: WorldData,
-): WorldMetadata {
-  if (!isRecord(value)) throw new Error("World metadata is not an object");
-  const mesh = value.mesh;
-  const source = value.source;
-  const topology = value.topology;
-  const quality = value.quality;
-  const solver = value.solver;
-  if (
-    value.schema !== "geodesic-world-v2" ||
-    typeof value.title !== "string" ||
-    value.title.length === 0 ||
-    !Number.isInteger(value.deterministicSeed) ||
-    !isRecord(mesh) ||
-    mesh.kind !== "procedural-torus" ||
-    !Number.isInteger(mesh.majorSegments) ||
-    (mesh.majorSegments as number) < 12 ||
-    !Number.isInteger(mesh.minorSegments) ||
-    (mesh.minorSegments as number) < 8 ||
-    (mesh.majorSegments as number) * (mesh.minorSegments as number) !==
-      data.vertexCount ||
-    2 * (mesh.majorSegments as number) * (mesh.minorSegments as number) !==
-      data.faceCount ||
-    !isFiniteNumber(mesh.majorRadius) ||
-    mesh.majorRadius <= 0 ||
-    !isFiniteNumber(mesh.minorRadius) ||
-    mesh.minorRadius <= 0 ||
-    !isFiniteNumber(mesh.relief) ||
-    mesh.relief < 0 ||
-    value.vertices !== data.vertexCount ||
-    value.faces !== data.faceCount ||
-    value.sourceVertex !== data.sourceVertex ||
-    !isRecord(source) ||
-    source.vertex !== data.sourceVertex ||
-    !isFiniteNumber(source.u) ||
-    source.u < 0 ||
-    source.u >= 2 * Math.PI ||
-    !isFiniteNumber(source.v) ||
-    source.v < 0 ||
-    source.v >= 2 * Math.PI ||
-    typeof source.label !== "string" ||
-    source.label.length === 0 ||
-    !isRecord(topology) ||
-    topology.closed !== true ||
-    topology.orientedManifold !== true ||
-    topology.boundaryEdges !== 0 ||
-    topology.eulerCharacteristic !== 0 ||
-    topology.genus !== 1 ||
-    !isRecord(quality) ||
-    !isFiniteNumber(quality.minimumAngleDegrees) ||
-    quality.minimumAngleDegrees <= 0 ||
-    !isFiniteNumber(quality.maximumAspectRatio) ||
-    quality.maximumAspectRatio <= 0 ||
-    !isFiniteNumber(value.meanEdgeLength) ||
-    value.meanEdgeLength <= 0 ||
-    Math.abs(value.meanEdgeLength - data.meanEdgeLength) > 1e-9 ||
-    !isFiniteNumber(value.heatMethodTimeStep) ||
-    value.heatMethodTimeStep <= 0 ||
-    Math.abs(value.heatMethodTimeStep - data.timeStep) > 1e-9 ||
-    typeof value.laplacianSign !== "string" ||
-    typeof value.boundaryCondition !== "string" ||
-    typeof value.heatEncoding !== "string" ||
-    !isFiniteNumber(value.heatResidual) ||
-    value.heatResidual < 0 ||
-    !isFiniteNumber(value.poissonResidual) ||
-    value.poissonResidual < 0 ||
-    !Number.isInteger(value.zeroGradientFaces) ||
-    (value.zeroGradientFaces as number) < 0 ||
-    !isRecord(solver) ||
-    typeof solver.language !== "string" ||
-    typeof solver.library !== "string" ||
-    typeof solver.precision !== "string" ||
-    typeof solver.direct !== "string" ||
-    typeof solver.iterative !== "string" ||
-    typeof value.reference !== "string" ||
-    value.reference.length === 0
-  ) {
-    throw new Error("World metadata does not match the binary payload");
+export function parseWorldManifest(value: unknown): WorldManifest {
+  if (!isRecord(value) || !Array.isArray(value.worlds)) {
+    throw new Error("World manifest is not an object");
   }
-  const routePresets = parseRoutePresets(value.routePresets, data);
+  const supported = value.supportedGenera;
   if (
-    new Set(routePresets.map((route) => route.startFace)).size !==
-      routePresets.length ||
-    new Set(
-      routePresets.map((route) => route.tracedHeatMethodRouteLength.toFixed(3)),
-    ).size !== routePresets.length
+    value.schema !== "geodesic-world-manifest-v1" ||
+    value.binarySchemaVersion !== 3 ||
+    value.defaultGenus !== 2 ||
+    !Array.isArray(supported) ||
+    supported.length !== 3 ||
+    !SUPPORTED_GENERA.every((genus, index) => supported[index] === genus) ||
+    value.worlds.length !== 3
   ) {
-    throw new Error("World route presets are not geometrically distinct");
+    throw new Error("World manifest schema or supported genera are invalid");
   }
-  return { ...(value as unknown as WorldMetadata), routePresets };
+  const worlds = value.worlds.map((candidate, index) => {
+    if (!isRecord(candidate))
+      throw new Error("World manifest entry is invalid");
+    const expectedGenus = SUPPORTED_GENERA[index]!;
+    const safePath = (path: unknown): path is string =>
+      typeof path === "string" &&
+      path.length > 0 &&
+      !path.startsWith("/") &&
+      !path.includes("..") &&
+      !path.includes("://");
+    if (
+      candidate.genus !== expectedGenus ||
+      typeof candidate.label !== "string" ||
+      candidate.label !== `Genus ${expectedGenus}` ||
+      typeof candidate.accessibleLabel !== "string" ||
+      candidate.accessibleLabel.length === 0 ||
+      !safePath(candidate.binary) ||
+      !safePath(candidate.metadata) ||
+      !Number.isInteger(candidate.binaryBytes) ||
+      (candidate.binaryBytes as number) <= 0 ||
+      !Number.isInteger(candidate.vertices) ||
+      (candidate.vertices as number) <= 0 ||
+      !Number.isInteger(candidate.faces) ||
+      (candidate.faces as number) <= 0
+    ) {
+      throw new Error(
+        `World manifest entry for genus ${expectedGenus} is invalid`,
+      );
+    }
+    return candidate as unknown as WorldManifestEntry;
+  });
+  return {
+    schema: "geodesic-world-manifest-v1",
+    binarySchemaVersion: 3,
+    defaultGenus: 2,
+    supportedGenera: SUPPORTED_GENERA,
+    worlds,
+  };
 }
 
 function copyTypedArray<
@@ -260,60 +414,300 @@ function copyTypedArray<
     readonly BYTES_PER_ELEMENT: number;
   },
 ): { values: T; nextOffset: number } {
+  const byteLength = count * constructor.BYTES_PER_ELEMENT;
+  if (
+    byteOffset < 0 ||
+    byteLength < 0 ||
+    byteOffset + byteLength > buffer.byteLength
+  ) {
+    throw new Error("World binary array exceeds the payload length");
+  }
   const view = new constructor(buffer, byteOffset, count);
-  const values = new constructor(
-    new ArrayBuffer(count * constructor.BYTES_PER_ELEMENT),
-    0,
-    count,
-  );
+  const values = new constructor(new ArrayBuffer(byteLength), 0, count);
   values.set(view);
+  return { values, nextOffset: byteOffset + byteLength };
+}
+
+function deriveTopology(
+  positions: Float32Array,
+  indices: Uint32Array,
+  faceAdjacency: Int32Array,
+  vertexCount: number,
+  faceCount: number,
+): {
+  topology: DerivedTopology;
+  quality: DerivedMeshQuality;
+  bounds: { center: [number, number, number]; radius: number };
+  vertexNeighbors: number[][];
+} {
+  type EdgeRecord = {
+    count: number;
+    orientation: number;
+    incidents: Array<{ face: number; oppositeLocal: number }>;
+  };
+  const edges = new Map<bigint, EdgeRecord>();
+  const duplicateFaces = new Set<string>();
+  const neighborSets = Array.from(
+    { length: vertexCount },
+    () => new Set<number>(),
+  );
+  const vertexFaces = Array.from({ length: vertexCount }, () => [] as number[]);
+  const derivedAdjacency = new Int32Array(faceCount * 3);
+  derivedAdjacency.fill(-1);
+  const angles: number[] = [];
+  let minimumAngleDegrees = Number.POSITIVE_INFINITY;
+  let maximumAspectRatio = 0;
+  let minimumFaceArea = Number.POSITIVE_INFINITY;
+  let signedVolume = 0;
+  const center: [number, number, number] = [0, 0, 0];
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    center[0] += positions[3 * vertex]!;
+    center[1] += positions[3 * vertex + 1]!;
+    center[2] += positions[3 * vertex + 2]!;
+  }
+  center[0] /= vertexCount;
+  center[1] /= vertexCount;
+  center[2] /= vertexCount;
+  let boundingRadius = 0;
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    boundingRadius = Math.max(
+      boundingRadius,
+      Math.hypot(
+        positions[3 * vertex]! - center[0],
+        positions[3 * vertex + 1]! - center[1],
+        positions[3 * vertex + 2]! - center[2],
+      ),
+    );
+  }
+  for (let face = 0; face < faceCount; face += 1) {
+    const triangle = [
+      indices[3 * face]!,
+      indices[3 * face + 1]!,
+      indices[3 * face + 2]!,
+    ];
+    if (
+      triangle.some((vertex) => vertex >= vertexCount) ||
+      new Set(triangle).size !== 3
+    ) {
+      throw new Error("World triangle index is invalid");
+    }
+    const faceKey = [...triangle].sort((a, b) => a - b).join(":");
+    if (duplicateFaces.has(faceKey)) {
+      throw new Error("World geometry contains a duplicate face");
+    }
+    duplicateFaces.add(faceKey);
+    const a = triangle[0]!;
+    const b = triangle[1]!;
+    const c = triangle[2]!;
+    const ax = positions[3 * a]!;
+    const ay = positions[3 * a + 1]!;
+    const az = positions[3 * a + 2]!;
+    const bx = positions[3 * b]!;
+    const by = positions[3 * b + 1]!;
+    const bz = positions[3 * b + 2]!;
+    const cx = positions[3 * c]!;
+    const cy = positions[3 * c + 1]!;
+    const cz = positions[3 * c + 2]!;
+    const crossX = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
+    const crossY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+    const crossZ = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const doubledArea = Math.hypot(crossX, crossY, crossZ);
+    if (doubledArea <= 1e-10) {
+      throw new Error("World geometry contains a zero-area face");
+    }
+    const area = 0.5 * doubledArea;
+    minimumFaceArea = Math.min(minimumFaceArea, area);
+    const lengths = [
+      Math.hypot(bx - cx, by - cy, bz - cz),
+      Math.hypot(cx - ax, cy - ay, cz - az),
+      Math.hypot(ax - bx, ay - by, az - bz),
+    ];
+    maximumAspectRatio = Math.max(
+      maximumAspectRatio,
+      Math.max(...lengths.map((length) => length * length)) / (2 * area),
+    );
+    for (let corner = 0; corner < 3; corner += 1) {
+      const first = lengths[(corner + 1) % 3]!;
+      const second = lengths[(corner + 2) % 3]!;
+      const opposite = lengths[corner]!;
+      const cosine = Math.max(
+        -1,
+        Math.min(
+          1,
+          (first * first + second * second - opposite * opposite) /
+            (2 * first * second),
+        ),
+      );
+      const angle = (Math.acos(cosine) * 180) / Math.PI;
+      angles.push(angle);
+      minimumAngleDegrees = Math.min(minimumAngleDegrees, angle);
+    }
+    signedVolume +=
+      (ax * (by * cz - bz * cy) +
+        ay * (bz * cx - bx * cz) +
+        az * (bx * cy - by * cx)) /
+      6;
+    for (let local = 0; local < 3; local += 1) {
+      const first = triangle[local]!;
+      const second = triangle[(local + 1) % 3]!;
+      neighborSets[first]!.add(second);
+      neighborSets[second]!.add(first);
+      const lower = Math.min(first, second);
+      const upper = Math.max(first, second);
+      const key = (BigInt(lower) << 32n) | BigInt(upper);
+      const record = edges.get(key) ?? {
+        count: 0,
+        orientation: 0,
+        incidents: [],
+      };
+      record.count += 1;
+      record.orientation += first === lower ? 1 : -1;
+      record.incidents.push({ face, oppositeLocal: (local + 2) % 3 });
+      edges.set(key, record);
+    }
+    vertexFaces[a]!.push(face);
+    vertexFaces[b]!.push(face);
+    vertexFaces[c]!.push(face);
+  }
+  let boundaryEdges = 0;
+  for (const record of edges.values()) {
+    if (record.count === 1) boundaryEdges += 1;
+    if (record.count > 2 || (record.count === 2 && record.orientation !== 0)) {
+      throw new Error(
+        "World geometry is nonmanifold or inconsistently oriented",
+      );
+    }
+    if (record.count === 2) {
+      const first = record.incidents[0]!;
+      const second = record.incidents[1]!;
+      derivedAdjacency[3 * first.face + first.oppositeLocal] = second.face;
+      derivedAdjacency[3 * second.face + second.oppositeLocal] = first.face;
+    }
+  }
+  for (let entry = 0; entry < faceAdjacency.length; entry += 1) {
+    if (faceAdjacency[entry] !== derivedAdjacency[entry]) {
+      throw new Error("World face adjacency disagrees with triangle topology");
+    }
+  }
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const incident = vertexFaces[vertex]!;
+    if (incident.length === 0) {
+      throw new Error("World geometry contains an isolated vertex");
+    }
+    const visitedFaces = new Set<number>();
+    const stack = [incident[0]!];
+    while (stack.length > 0) {
+      const face = stack.pop()!;
+      if (visitedFaces.has(face)) continue;
+      visitedFaces.add(face);
+      const triangle = [
+        indices[3 * face]!,
+        indices[3 * face + 1]!,
+        indices[3 * face + 2]!,
+      ];
+      let linkDegree = 0;
+      for (let local = 0; local < 3; local += 1) {
+        if (
+          triangle[local] === vertex ||
+          triangle[(local + 1) % 3] === vertex
+        ) {
+          linkDegree += 1;
+          const neighbor = derivedAdjacency[3 * face + ((local + 2) % 3)]!;
+          if (neighbor >= 0) stack.push(neighbor);
+        }
+      }
+      if (linkDegree !== 2) {
+        throw new Error("World vertex link is not a closed manifold cycle");
+      }
+    }
+    if (visitedFaces.size !== incident.length) {
+      throw new Error("World vertex has disconnected incident triangle fans");
+    }
+  }
+  const vertexNeighbors = neighborSets.map((neighbors) =>
+    [...neighbors].sort((a, b) => a - b),
+  );
+  const visited = new Uint8Array(vertexCount);
+  let connectedComponents = 0;
+  for (let start = 0; start < vertexCount; start += 1) {
+    if (visited[start]) continue;
+    connectedComponents += 1;
+    const queue = [start];
+    visited[start] = 1;
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      for (const neighbor of vertexNeighbors[queue[cursor]!]!) {
+        if (!visited[neighbor]) {
+          visited[neighbor] = 1;
+          queue.push(neighbor);
+        }
+      }
+    }
+  }
+  const eulerCharacteristic = vertexCount - edges.size + faceCount;
+  const recoveredGenus = 1 - eulerCharacteristic / 2;
+  angles.sort((first, second) => first - second);
   return {
-    values,
-    nextOffset: byteOffset + count * constructor.BYTES_PER_ELEMENT,
+    topology: {
+      edges: edges.size,
+      connectedComponents,
+      boundaryEdges,
+      eulerCharacteristic,
+      recoveredGenus,
+      signedVolume,
+    },
+    quality: {
+      minimumAngleDegrees,
+      onePercentileAngleDegrees:
+        angles[Math.min(angles.length - 1, Math.floor(angles.length / 100))]!,
+      maximumAspectRatio,
+      minimumFaceArea,
+    },
+    bounds: { center, radius: boundingRadius },
+    vertexNeighbors,
   };
 }
 
 export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
-  const data = new DataView(buffer);
-  if (buffer.byteLength < 64) {
-    throw new Error("World binary is too short");
-  }
+  if (buffer.byteLength < 72) throw new Error("World binary is too short");
+  const view = new DataView(buffer);
   let magic = "";
   for (let index = 0; index < 8; index += 1) {
-    magic += String.fromCharCode(data.getUint8(index));
+    magic += String.fromCharCode(view.getUint8(index));
   }
-  if (magic !== MAGIC) {
-    throw new Error(`Unexpected world magic: ${magic}`);
-  }
-
+  if (magic !== MAGIC) throw new Error(`Unexpected world magic: ${magic}`);
   let offset = 8;
   const readUint32 = (): number => {
-    const value = data.getUint32(offset, true);
+    if (offset + 4 > buffer.byteLength)
+      throw new Error("World binary header is truncated");
+    const value = view.getUint32(offset, true);
     offset += 4;
     return value;
   };
   const readFloat64 = (): number => {
-    const value = data.getFloat64(offset, true);
+    if (offset + 8 > buffer.byteLength)
+      throw new Error("World binary header is truncated");
+    const value = view.getFloat64(offset, true);
     offset += 8;
     return value;
   };
-
   const version = readUint32();
   const vertexCount = readUint32();
   const faceCount = readUint32();
   const heatFrameCount = readUint32();
   const gradientSampleCount = readUint32();
   const sourceVertex = readUint32();
-  const reserved = readUint32();
+  const routePointCount = readUint32();
+  const routeCount = readUint32();
   if (
-    version !== 2 ||
+    version !== 3 ||
     vertexCount === 0 ||
     faceCount === 0 ||
     heatFrameCount === 0 ||
-    vertexCount > 10_000_000 ||
-    faceCount > 20_000_000 ||
-    sourceVertex >= vertexCount ||
-    reserved !== 0
+    routePointCount < 12 ||
+    routeCount !== 3 ||
+    vertexCount > 2_000_000 ||
+    faceCount > 4_000_000 ||
+    sourceVertex >= vertexCount
   ) {
     throw new Error("World binary header is invalid or unsupported");
   }
@@ -339,6 +733,14 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     ) {
       throw new Error("World heat frame metadata is invalid");
     }
+  }
+  if (
+    !Number.isFinite(meanEdgeLength) ||
+    meanEdgeLength <= 0 ||
+    !Number.isFinite(timeStep) ||
+    timeStep <= 0
+  ) {
+    throw new Error("World scale metadata is invalid");
   }
 
   const positionsResult = copyTypedArray(
@@ -397,46 +799,46 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
   );
   const dijkstraPredecessor = predecessorResult.values;
   offset = predecessorResult.nextOffset;
-
   const heatFrames: Uint16Array[] = [];
   for (let frame = 0; frame < heatFrameCount; frame += 1) {
     const result = copyTypedArray(buffer, offset, vertexCount, Uint16Array);
     heatFrames.push(result.values);
     offset = result.nextOffset;
   }
-
   const gradientSamples: GradientSample[] = [];
   for (let sample = 0; sample < gradientSampleCount; sample += 1) {
-    const face = data.getUint32(offset, true);
+    if (offset + 28 > buffer.byteLength)
+      throw new Error("World gradient samples are truncated");
+    const face = view.getUint32(offset, true);
     offset += 4;
     const position: [number, number, number] = [
-      data.getFloat32(offset, true),
-      data.getFloat32(offset + 4, true),
-      data.getFloat32(offset + 8, true),
+      view.getFloat32(offset, true),
+      view.getFloat32(offset + 4, true),
+      view.getFloat32(offset + 8, true),
     ];
     offset += 12;
     const direction: [number, number, number] = [
-      data.getFloat32(offset, true),
-      data.getFloat32(offset + 4, true),
-      data.getFloat32(offset + 8, true),
+      view.getFloat32(offset, true),
+      view.getFloat32(offset + 4, true),
+      view.getFloat32(offset + 8, true),
     ];
     offset += 12;
     gradientSamples.push({ face, position, direction });
   }
+  const routePointsResult = copyTypedArray(
+    buffer,
+    offset,
+    routePointCount * 3,
+    Float32Array,
+  );
+  const nativeRoutePoints = routePointsResult.values;
+  offset = routePointsResult.nextOffset;
   if (offset !== buffer.byteLength) {
     throw new Error(
       `World binary length mismatch: parsed ${offset}, received ${buffer.byteLength}`,
     );
   }
 
-  if (
-    !Number.isFinite(meanEdgeLength) ||
-    meanEdgeLength <= 0 ||
-    !Number.isFinite(timeStep) ||
-    timeStep <= 0
-  ) {
-    throw new Error("World scale metadata is invalid");
-  }
   for (let component = 0; component < positions.length; component += 1) {
     if (
       !Number.isFinite(positions[component]) ||
@@ -446,7 +848,14 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     }
   }
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const normalLength = Math.hypot(
+      normals[3 * vertex]!,
+      normals[3 * vertex + 1]!,
+      normals[3 * vertex + 2]!,
+    );
     if (
+      normalLength < 0.9 ||
+      normalLength > 1.1 ||
       !Number.isFinite(distance[vertex]) ||
       distance[vertex]! < -1e-5 ||
       !Number.isFinite(dijkstraDistance[vertex]) ||
@@ -454,21 +863,15 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
       (dijkstraPredecessor[vertex] !== 0xffffffff &&
         dijkstraPredecessor[vertex]! >= vertexCount)
     ) {
-      throw new Error("World distance or predecessor data is invalid");
+      throw new Error("World normal, distance, or predecessor data is invalid");
     }
   }
   if (Math.abs(distance[sourceVertex]!) > 1e-4) {
     throw new Error("World source distance is not zero");
   }
-  for (let corner = 0; corner < indices.length; corner += 1) {
-    if (indices[corner]! >= vertexCount) {
-      throw new Error("World triangle index is out of range");
-    }
-  }
-  for (let corner = 0; corner < faceAdjacency.length; corner += 1) {
-    const adjacent = faceAdjacency[corner]!;
-    if (adjacent < -1 || adjacent >= faceCount) {
-      throw new Error("World face adjacency is out of range");
+  for (const adjacent of faceAdjacency) {
+    if (adjacent < 0 || adjacent >= faceCount) {
+      throw new Error("Closed world face adjacency is invalid");
     }
   }
   for (const sample of gradientSamples) {
@@ -480,29 +883,34 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
       throw new Error("World gradient sample is invalid");
     }
   }
-
-  const neighborSets = Array.from(
-    { length: vertexCount },
-    () => new Set<number>(),
-  );
-  for (let face = 0; face < faceCount; face += 1) {
-    const a = indices[3 * face]!;
-    const b = indices[3 * face + 1]!;
-    const c = indices[3 * face + 2]!;
-    neighborSets[a]!.add(b).add(c);
-    neighborSets[b]!.add(a).add(c);
-    neighborSets[c]!.add(a).add(b);
+  for (const component of nativeRoutePoints) {
+    if (!Number.isFinite(component))
+      throw new Error("Native route payload is not finite");
   }
-  const vertexNeighbors = neighborSets.map((neighbors) =>
-    [...neighbors].sort((a, b) => a - b),
+  const { topology, quality, bounds, vertexNeighbors } = deriveTopology(
+    positions,
+    indices,
+    faceAdjacency,
+    vertexCount,
+    faceCount,
   );
-
+  if (
+    topology.connectedComponents !== 1 ||
+    topology.boundaryEdges !== 0 ||
+    !Number.isInteger(topology.recoveredGenus) ||
+    !isSupportedGenus(topology.recoveredGenus) ||
+    topology.signedVolume <= 0
+  ) {
+    throw new Error("World binary fails closed orientable topology validation");
+  }
   return {
-    version,
+    version: 3,
     vertexCount,
     faceCount,
     heatFrameCount,
     sourceVertex,
+    routePointCount,
+    routeCount,
     meanEdgeLength,
     timeStep,
     frameTimes,
@@ -517,29 +925,239 @@ export function parseWorldBinary(buffer: ArrayBuffer): WorldData {
     dijkstraPredecessor,
     heatFrames,
     gradientSamples,
+    nativeRoutePoints,
     vertexNeighbors,
+    derivedTopology: topology,
+    derivedQuality: quality,
+    derivedBounds: bounds,
   };
 }
 
-export async function loadWorldData(): Promise<{
-  data: WorldData;
-  metadata: WorldMetadata;
-}> {
-  const base = import.meta.env.BASE_URL;
-  const [binaryResponse, metadataResponse] = await Promise.all([
-    fetch(`${base}data/world.bin`),
-    fetch(`${base}data/world.meta.json`),
-  ]);
-  if (!binaryResponse.ok || !metadataResponse.ok) {
+export function parseWorldMetadata(
+  value: unknown,
+  data: WorldData,
+): WorldMetadata {
+  if (!isRecord(value)) throw new Error("World metadata is not an object");
+  const mesh = value.mesh;
+  const bounds = value.bounds;
+  const source = value.source;
+  const topology = value.topology;
+  const quality = value.quality;
+  const solver = value.solver;
+  if (
+    value.schema !== "geodesic-world-v3" ||
+    typeof value.title !== "string" ||
+    value.title.length === 0 ||
+    typeof value.accessibleLabel !== "string" ||
+    value.accessibleLabel.length === 0 ||
+    !isRecord(mesh) ||
+    mesh.kind !== "implicit-thickened-loop-graph" ||
+    !isSupportedGenus(mesh.genus) ||
+    !Number.isInteger(mesh.resolution) ||
+    (mesh.resolution as number) < 28 ||
+    !isFiniteNumber(mesh.tubeRadius) ||
+    mesh.tubeRadius <= 0 ||
+    !isFiniteNumber(mesh.relief) ||
+    mesh.relief < 0 ||
+    !Number.isInteger(mesh.seed) ||
+    value.vertices !== data.vertexCount ||
+    value.edges !== data.derivedTopology.edges ||
+    value.faces !== data.faceCount ||
+    !isRecord(bounds) ||
+    !isFiniteNumber(bounds.radius) ||
+    bounds.radius <= 0 ||
+    value.sourceVertex !== data.sourceVertex ||
+    !isRecord(source) ||
+    typeof source.label !== "string" ||
+    source.label.length === 0 ||
+    !isRecord(topology) ||
+    topology.closed !== true ||
+    topology.orientedManifold !== true ||
+    topology.connectedComponents !== data.derivedTopology.connectedComponents ||
+    topology.boundaryEdges !== data.derivedTopology.boundaryEdges ||
+    topology.eulerCharacteristic !== data.derivedTopology.eulerCharacteristic ||
+    topology.genus !== data.derivedTopology.recoveredGenus ||
+    topology.genus !== mesh.genus ||
+    topology.eulerCharacteristic !== 2 - 2 * topology.genus ||
+    !isFiniteNumber(topology.signedVolume) ||
+    Math.abs(topology.signedVolume - data.derivedTopology.signedVolume) >
+      Math.max(2e-5, topology.signedVolume * 2e-5) ||
+    !isRecord(quality) ||
+    !isFiniteNumber(quality.minimumAngleDegrees) ||
+    quality.minimumAngleDegrees < 10 ||
+    !isFiniteNumber(quality.onePercentileAngleDegrees) ||
+    quality.onePercentileAngleDegrees < 25 ||
+    !isFiniteNumber(quality.maximumAspectRatio) ||
+    quality.maximumAspectRatio <= 0 ||
+    quality.maximumAspectRatio > 8 ||
+    !isFiniteNumber(quality.minimumFaceArea) ||
+    quality.minimumFaceArea <= 0 ||
+    Math.abs(
+      quality.minimumAngleDegrees - data.derivedQuality.minimumAngleDegrees,
+    ) > Math.max(1e-4, quality.minimumAngleDegrees * 2e-4) ||
+    Math.abs(
+      quality.onePercentileAngleDegrees -
+        data.derivedQuality.onePercentileAngleDegrees,
+    ) > Math.max(1e-4, quality.onePercentileAngleDegrees * 2e-4) ||
+    Math.abs(
+      quality.maximumAspectRatio - data.derivedQuality.maximumAspectRatio,
+    ) > Math.max(1e-4, quality.maximumAspectRatio * 2e-4) ||
+    Math.abs(quality.minimumFaceArea - data.derivedQuality.minimumFaceArea) >
+      Math.max(1e-8, quality.minimumFaceArea * 2e-4) ||
+    !isFiniteNumber(value.meanEdgeLength) ||
+    Math.abs(value.meanEdgeLength - data.meanEdgeLength) > 1e-9 ||
+    !isFiniteNumber(value.heatMethodTimeStep) ||
+    Math.abs(value.heatMethodTimeStep - data.timeStep) > 1e-9 ||
+    typeof value.laplacianSign !== "string" ||
+    typeof value.boundaryCondition !== "string" ||
+    typeof value.heatEncoding !== "string" ||
+    !isFiniteNumber(value.heatResidual) ||
+    value.heatResidual < 0 ||
+    !isFiniteNumber(value.poissonResidual) ||
+    value.poissonResidual < 0 ||
+    !Number.isInteger(value.zeroGradientFaces) ||
+    (value.zeroGradientFaces as number) < 0 ||
+    !isRecord(solver) ||
+    typeof solver.language !== "string" ||
+    typeof solver.library !== "string" ||
+    typeof solver.precision !== "string" ||
+    typeof solver.direct !== "string" ||
+    typeof solver.iterative !== "string" ||
+    !Array.isArray(value.references) ||
+    value.references.length < 2 ||
+    !value.references.every(
+      (reference) => typeof reference === "string" && reference.length > 0,
+    )
+  ) {
+    throw new Error("World metadata does not match the binary payload");
+  }
+  const center = parseVector3(bounds.center, "World bounds center");
+  const anchor = parseVector3(source.anchor, "World source anchor");
+  const sourceSurfacePoint = parseSurfacePoint(
+    source.surfacePoint,
+    data,
+    "World source surface point",
+  );
+  if (
+    distance3(center, data.derivedBounds.center) >
+      Math.max(1e-6, data.derivedBounds.radius * 2e-5) ||
+    Math.abs(bounds.radius - data.derivedBounds.radius) >
+      Math.max(1e-6, data.derivedBounds.radius * 2e-5) ||
+    distance3(
+      surfacePointPosition(data, sourceSurfacePoint),
+      data.positions.subarray(3 * data.sourceVertex, 3 * data.sourceVertex + 3),
+    ) >
+      2 * data.meanEdgeLength
+  ) {
     throw new Error(
-      `World data request failed (${binaryResponse.status}, ${metadataResponse.status})`,
+      "World bounds or source landmark do not match the binary payload",
     );
   }
-  const [buffer, metadataValue] = await Promise.all([
-    binaryResponse.arrayBuffer(),
-    metadataResponse.json() as Promise<unknown>,
-  ]);
-  const data = parseWorldBinary(buffer);
-  const metadata = parseWorldMetadata(metadataValue, data);
-  return { data, metadata };
+  const routePresets = parseRoutePresets(value.routePresets, data);
+  if (
+    new Set(routePresets.map((route) => route.start.face)).size !==
+      routePresets.length ||
+    new Set(
+      routePresets.map((route) => route.tracedHeatMethodRouteLength.toFixed(3)),
+    ).size !== routePresets.length
+  ) {
+    throw new Error("World route presets are not geometrically distinct");
+  }
+  return {
+    ...(value as unknown as WorldMetadata),
+    bounds: { center, radius: bounds.radius },
+    source: { label: source.label, surfacePoint: sourceSurfacePoint, anchor },
+    routePresets,
+  };
+}
+
+type FetchLike = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export class WorldDataRepository {
+  private manifestPromise?: Promise<WorldManifest>;
+  private readonly worldPromises = new Map<
+    SupportedGenus,
+    Promise<WorldBundle>
+  >();
+
+  constructor(
+    private readonly baseUrl = import.meta.env.BASE_URL,
+    private readonly fetcher: FetchLike = (input, init) => fetch(input, init),
+  ) {}
+
+  loadManifest(): Promise<WorldManifest> {
+    if (!this.manifestPromise) {
+      const request = this.fetcher(`${this.baseUrl}data/worlds/manifest.json`)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(
+              `World manifest request failed (${response.status})`,
+            );
+          }
+          return parseWorldManifest(await response.json());
+        })
+        .catch((error) => {
+          this.manifestPromise = undefined;
+          throw error;
+        });
+      this.manifestPromise = request;
+    }
+    return this.manifestPromise;
+  }
+
+  loadWorld(genus: SupportedGenus): Promise<WorldBundle> {
+    if (!isSupportedGenus(genus)) {
+      return Promise.reject(new Error(`Unsupported world genus: ${genus}`));
+    }
+    const cached = this.worldPromises.get(genus);
+    if (cached) return cached;
+    const request = this.loadManifest()
+      .then(async (manifest) => {
+        const entry = manifest.worlds.find((world) => world.genus === genus);
+        if (!entry)
+          throw new Error(`Manifest does not describe genus ${genus}`);
+        const root = `${this.baseUrl}data/worlds/`;
+        const [binaryResponse, metadataResponse] = await Promise.all([
+          this.fetcher(root + entry.binary),
+          this.fetcher(root + entry.metadata),
+        ]);
+        if (!binaryResponse.ok || !metadataResponse.ok) {
+          throw new Error(
+            `Genus ${genus} data request failed (${binaryResponse.status}, ${metadataResponse.status})`,
+          );
+        }
+        const [buffer, metadataValue] = await Promise.all([
+          binaryResponse.arrayBuffer(),
+          metadataResponse.json() as Promise<unknown>,
+        ]);
+        if (buffer.byteLength !== entry.binaryBytes) {
+          throw new Error(
+            `Genus ${genus} binary size does not match the manifest`,
+          );
+        }
+        const data = parseWorldBinary(buffer);
+        const metadata = parseWorldMetadata(metadataValue, data);
+        if (
+          metadata.mesh.genus !== genus ||
+          data.vertexCount !== entry.vertices ||
+          data.faceCount !== entry.faces
+        ) {
+          throw new Error(`Genus ${genus} payload does not match the manifest`);
+        }
+        return { data, metadata, manifestEntry: entry };
+      })
+      .catch((error) => {
+        this.worldPromises.delete(genus);
+        throw error;
+      });
+    this.worldPromises.set(genus, request);
+    return request;
+  }
+
+  isCached(genus: SupportedGenus): boolean {
+    return this.worldPromises.has(genus);
+  }
 }

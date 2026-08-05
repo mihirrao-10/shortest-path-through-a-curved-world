@@ -1,0 +1,11 @@
+{
+  "schema": "geodesic-world-manifest-v1",
+  "binarySchemaVersion": 3,
+  "defaultGenus": 2,
+  "supportedGenera": [1, 2, 3],
+  "worlds": [
+    {"genus": 1, "label": "Genus 1", "accessibleLabel": "Genus 1 closed orientable surface with 1 handle", "binary": "genus-1/world.bin", "metadata": "genus-1/world.meta.json", "binaryBytes": 2034912, "vertices": 21042, "faces": 42084},
+    {"genus": 2, "label": "Genus 2", "accessibleLabel": "Genus 2 closed orientable surface with 2 handles", "binary": "genus-2/world.bin", "metadata": "genus-2/world.meta.json", "binaryBytes": 1435480, "vertices": 14790, "faces": 29584},
+    {"genus": 3, "label": "Genus 3", "accessibleLabel": "Genus 3 closed orientable surface with 3 handles", "binary": "genus-3/world.bin", "metadata": "genus-3/world.meta.json", "binaryBytes": 1116940, "vertices": 11466, "faces": 22940}
+  ]
+}

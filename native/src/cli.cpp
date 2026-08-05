@@ -31,12 +31,19 @@ double doubleArgument(int argc, char** argv, std::string_view name, double fallb
   return value.empty() ? fallback : std::stod(value);
 }
 
-geodesic::TorusOptions torusArguments(int argc, char** argv) {
-  geodesic::TorusOptions options;
-  options.majorSegments = intArgument(argc, argv, "--major-segments", options.majorSegments);
-  options.minorSegments = intArgument(argc, argv, "--minor-segments", options.minorSegments);
-  options.majorRadius = doubleArgument(argc, argv, "--major-radius", options.majorRadius);
-  options.minorRadius = doubleArgument(argc, argv, "--minor-radius", options.minorRadius);
+bool hasFlag(int argc, char** argv, std::string_view name) {
+  for (int index = 2; index < argc; ++index) {
+    if (argv[index] == name)
+      return true;
+  }
+  return false;
+}
+
+geodesic::CurvedWorldOptions curvedWorldArguments(int argc, char** argv) {
+  geodesic::CurvedWorldOptions options;
+  options.genus = intArgument(argc, argv, "--genus", options.genus);
+  options.resolution = intArgument(argc, argv, "--resolution", options.resolution);
+  options.tubeRadius = doubleArgument(argc, argv, "--tube-radius", options.tubeRadius);
   options.relief = doubleArgument(argc, argv, "--relief", options.relief);
   const std::string seed = argumentValue(argc, argv, "--seed");
   if (!seed.empty()) {
@@ -49,13 +56,14 @@ void usage() {
   std::cout
       << "Heat Method geodesics on triangle meshes\n\n"
       << "Commands:\n"
-      << "  generate   [torus options] --output mesh.obj\n"
+      << "  generate   [world options] --output mesh.obj\n"
       << "  solve      --mesh mesh.obj [--source 0] [--method heat|dijkstra] --output values.csv\n"
       << "  path       --mesh mesh.obj [--source 0] [--start 1] --output path.obj\n"
-      << "  export-web [torus options] --output web/public/data\n\n"
-      << "Torus options:\n"
-      << "  --major-segments 160 --minor-segments 64\n"
-      << "  --major-radius 1.28 --minor-radius 0.46 --relief 0.18 --seed 1592594996\n";
+      << "  export-web [world options] [--all] --output web/public/data/worlds\n\n"
+      << "Curved-world options:\n"
+      << "  --genus 2 --resolution 64 --tube-radius 0.30 --relief 0.16\n"
+      << "  --seed 1592594996\n"
+      << "Only genus 1, 2, and 3 are supported. --all exports all three plus a manifest.\n";
 }
 
 } // namespace
@@ -67,14 +75,20 @@ int main(int argc, char** argv) {
       usage();
       return EXIT_FAILURE;
     }
+    if (std::string_view(argv[1]) == "--help" || std::string_view(argv[1]) == "-h" ||
+        hasFlag(argc, argv, "--help") || hasFlag(argc, argv, "-h")) {
+      usage();
+      return EXIT_SUCCESS;
+    }
     const std::string command = argv[1];
     if (command == "generate") {
-      const TorusOptions options = torusArguments(argc, argv);
+      const CurvedWorldOptions options = curvedWorldArguments(argc, argv);
       const std::filesystem::path output =
-          argumentValue(argc, argv, "--output", "curved-torus.obj");
-      TriangleMesh mesh = makeCurvedWorld(options);
-      writeObj(mesh, output);
-      std::cout << "wrote " << mesh.vertices().size() << " vertices and " << mesh.faces().size()
+          argumentValue(argc, argv, "--output", "curved-world.obj");
+      GeneratedCurvedWorld world = generateCurvedWorld(options);
+      writeObj(world.mesh, output);
+      std::cout << "wrote genus " << world.topology.recoveredGenus << " with "
+                << world.mesh.vertices().size() << " vertices and " << world.mesh.faces().size()
                 << " faces to " << output << '\n';
     } else if (command == "solve") {
       const std::string meshPath = argumentValue(argc, argv, "--mesh");
@@ -134,15 +148,27 @@ int main(int argc, char** argv) {
                 << path.termination << ")\n";
     } else if (command == "export-web") {
       WebExportOptions options;
-      options.torus = torusArguments(argc, argv);
-      const std::filesystem::path output = argumentValue(argc, argv, "--output", "web/public/data");
-      const WebExportReport report = exportCurvedWorld(output, options);
-      std::cout << "exported " << report.vertexCount << " vertices, " << report.faceCount
-                << " faces; source=" << report.sourceVertex << "\n"
-                << "heat residual=" << report.heatResidual
-                << " poisson residual=" << report.poissonResidual << '\n'
-                << report.binaryPath << '\n'
-                << report.metadataPath << '\n';
+      options.world = curvedWorldArguments(argc, argv);
+      const std::filesystem::path output =
+          argumentValue(argc, argv, "--output", "web/public/data/worlds");
+      if (hasFlag(argc, argv, "--all")) {
+        const std::vector<WebExportReport> reports = exportAllCurvedWorlds(output, options);
+        for (const WebExportReport& report : reports) {
+          std::cout << "exported genus " << report.genus << ": " << report.vertexCount
+                    << " vertices, " << report.faceCount
+                    << " faces, chi=" << report.eulerCharacteristic << '\n';
+        }
+        std::cout << output / "manifest.json" << '\n';
+      } else {
+        const WebExportReport report = exportCurvedWorld(output, options);
+        std::cout << "exported genus " << report.genus << ": " << report.vertexCount
+                  << " vertices, " << report.faceCount << " faces; source=" << report.sourceVertex
+                  << "\n"
+                  << "heat residual=" << report.heatResidual
+                  << " poisson residual=" << report.poissonResidual << '\n'
+                  << report.binaryPath << '\n'
+                  << report.metadataPath << '\n';
+      }
     } else {
       usage();
       return EXIT_FAILURE;

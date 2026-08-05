@@ -3,20 +3,26 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${project_root}/build-native"
+worlds_dir="${project_root}/web/public/data/worlds"
 
-cmake -S "${project_root}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release
+cmake_args=(-S "${project_root}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release)
+if command -v ninja >/dev/null 2>&1; then
+  cmake_args+=(-G Ninja)
+fi
+cmake "${cmake_args[@]}"
 cmake --build "${build_dir}" --parallel
+ctest --test-dir "${build_dir}" --output-on-failure
+cmake -E remove_directory "${worlds_dir}"
 "${build_dir}/geodesic_cli" export-web \
-  --major-segments 160 \
-  --minor-segments 64 \
-  --major-radius 1.28 \
-  --minor-radius 0.46 \
-  --relief 0.18 \
+  --all \
+  --resolution 64 \
+  --tube-radius 0.30 \
+  --relief 0.16 \
   --seed 1592594996 \
-  --output "${project_root}/web/public/data"
+  --output "${worlds_dir}"
 "${build_dir}/geodesic_benchmark" \
-  --min-major-segments 20 \
-  --max-major-segments 320 \
+  --min-resolution 28 \
+  --max-resolution 112 \
   --repetitions 7 \
   --host "${GEODESIC_BENCHMARK_HOST:-unspecified local host}" \
   --json "${project_root}/data/benchmarks.cpu.json"
