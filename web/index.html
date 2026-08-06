@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A C++20 Heat Method implementation across native-generated Genus 1, Genus 2, and Genus 3 surfaces, with measured routes and accessible mathematics."
+      content="A guided C++20 Heat Method journey across native-generated Genus 1, Genus 2, and Genus 3 surfaces."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -14,7 +14,7 @@
     />
     <meta
       property="og:description"
-      content="Explore three native-generated multi-handle worlds and compare an ambient chord, edge Dijkstra, and an official Heat Method surface path."
+      content="Follow heat as it reconstructs distance across a triangulated multi-handle world."
     />
     <meta property="og:type" content="website" />
     <meta
@@ -23,844 +23,1040 @@
     />
     <meta
       property="og:image"
-      content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/project-preview.png"
+      content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/og.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="The Shortest Path Through a Curved World"
+    />
+    <meta
+      name="twitter:description"
+      content="Follow heat as it reconstructs distance across a triangulated multi-handle world."
+    />
+    <meta
+      name="twitter:image"
+      content="https://mihirrao-10.github.io/shortest-path-through-a-curved-world/og.png"
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <title>The Shortest Path Through a Curved World</title>
   </head>
-  <body>
-    <a class="skip-link" href="#story-chapters">Skip to the story</a>
+  <body
+    data-started="false"
+    data-active-act="0"
+    data-max-unlocked-act="0"
+    data-route-selected="false"
+    data-route-locked="false"
+    data-heat-released="false"
+    data-comparison="false"
+  >
+    <section
+      id="opening-screen"
+      class="opening-screen"
+      aria-labelledby="opening-screen-title"
+    >
+      <div class="opening-screen__content">
+        <h1 id="opening-screen-title" class="chapter-title">
+          The Shortest Path Through a Curved World
+        </h1>
+        <button
+          id="start-button"
+          class="start-button"
+          type="button"
+          aria-describedby="startup-status"
+          disabled
+        >
+          Start
+        </button>
+        <p id="startup-status" class="startup-status" role="status">
+          Preparing the curved world
+        </p>
+      </div>
+    </section>
 
-    <main id="story">
-      <div class="story-layout">
-        <div class="visual-column">
-          <div
-            id="world-stage"
-            class="world-stage"
-            aria-label="Interactive curved world visualization"
-          >
-            <div class="canvas-frame">
-              <canvas
-                id="world-canvas"
-                tabindex="0"
-                aria-label="An interactive native-generated triangulated surface with a heat source and selected route start"
-                aria-describedby="world-instructions scene-caption"
-              ></canvas>
-              <div
-                id="loading"
-                class="loading"
-                role="status"
-                aria-live="polite"
-              >
-                <span aria-hidden="true"></span>
-                <p>Loading native Genus 2 world</p>
-              </div>
-              <div id="webgl-fallback" class="webgl-fallback" hidden>
-                <div class="fallback-world" aria-hidden="true"></div>
-                <p>
-                  The interactive world needs WebGL. The route measurements,
-                  story, and mathematics remain available.
-                </p>
-              </div>
-            </div>
-            <p id="scene-caption" class="scene-caption" aria-live="polite">
-              Choose a native-authored route, then orbit to inspect both ends.
-            </p>
-            <div class="stage-controls">
-              <div
-                id="genus-selector"
-                class="genus-selector"
-                role="group"
-                aria-label="Surface genus"
-              >
-                <button type="button" data-genus="1" aria-pressed="false">
-                  Genus 1
-                </button>
-                <button type="button" data-genus="2" aria-pressed="true">
-                  Genus 2
-                </button>
-                <button type="button" data-genus="3" aria-pressed="false">
-                  Genus 3
-                </button>
-              </div>
-              <div class="view-controls" aria-label="View controls">
-                <button id="explore-view" type="button" aria-pressed="false">
-                  Explore view
-                </button>
-                <button id="reset-view" type="button">Reset view</button>
-                <button id="focus-beacon" type="button">Focus beacon</button>
-                <button id="focus-route-start" type="button">
-                  Focus route start
-                </button>
-              </div>
-            </div>
-            <p id="world-instructions" class="sr-only">
-              Drag with a mouse or one finger to orbit. Enter Explore view to
-              use two-finger trackpad motion for orbiting and pinch for zoom.
-              Arrow keys orbit, plus and minus zoom, R resets the view, and
-              Escape exits Explore view. The Reset view, Focus beacon, and Focus
-              route start buttons provide the same essential actions.
-            </p>
-          </div>
-        </div>
+    <div id="journey-shell" hidden>
+      <a class="skip-link" href="#arrival">Skip to the current chapter</a>
+      <p
+        id="journey-announcer"
+        class="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
-        <div id="story-chapters" class="story-chapters">
-          <section
-            id="arrival"
-            class="chapter chapter--opening"
-            data-act="0"
-            aria-labelledby="arrival-title"
-          >
-            <div class="chapter-copy">
-              <h1 id="arrival-title">
-                The Shortest Path Through a Curved World
-              </h1>
-              <p class="subtitle">
-                How heat reconstructs distance on triangulated multi-handle
-                surfaces.
-              </p>
-              <p class="lead">
-                An explorer stands on a folded two-handle world. An amber beacon
-                waits across its outer ridge, shared neck, and basin. What is
-                the shortest route that never leaves the surface?
-              </p>
-              <p>
-                Genus counts handles: Genus 1 has one, Genus 2 has two, and
-                Genus 3 has three. For a connected closed orientable
-                triangulated surface,
-                <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
-                changes global topology, not merely cosmetic shape.
-              </p>
-              <a class="scroll-cue" href="#straight-line"
-                >Follow the question <span aria-hidden="true">↓</span></a
-              >
-            </div>
-          </section>
-
-          <section
-            id="straight-line"
-            class="chapter"
-            data-act="1"
-            aria-labelledby="straight-title"
-          >
-            <div class="chapter-copy">
-              <h2 id="straight-title">Why not draw a straight line?</h2>
-              <p>
-                The curved world is a two-dimensional surface embedded in
-                ordinary three-dimensional space. That surrounding room is the
-                <em>ambient space</em>. A straight line is allowed to move
-                anywhere in that room, even where the surface is absent.
-              </p>
-              <p
-                class="equation equation--compact"
-                data-math="c(s)=(1-s)p+sq,\qquad 0\le s\le 1"
-              ></p>
-              <p>
-                This segment is the <em>ambient chord</em> from start
-                <span data-math="p"></span> to beacon
-                <span data-math="q"></span>. It is shortest in Euclidean 3D, but
-                on a multi-handle world it can leave the surface, cut through a
-                tube, or cross empty space inside the hole.
-              </p>
-              <p>
-                A <em>surface path</em> is a continuous curve
-                <span data-math="\gamma"></span> for which every point
-                <span data-math="\gamma(t)"></span> lies on the surface. Such a
-                path is <em>admissible</em>, meaning it is a route the explorer
-                is allowed to walk. The chord usually is not.
-              </p>
-              <div class="distance-key" aria-label="Distance comparison">
-                <span><i class="ambient-swatch"></i> Ambient chord</span>
-                <span><i class="surface-swatch"></i> Surface path</span>
-              </div>
-              <p class="margin-note">
-                A shorter number is not a valid answer when its path violates
-                the constraint.
-              </p>
-            </div>
-          </section>
-
-          <section
-            id="triangles"
-            class="chapter"
-            data-act="2"
-            aria-labelledby="triangles-title"
-          >
-            <div class="chapter-copy">
-              <h2 id="triangles-title">How can a computer hold the surface?</h2>
-              <p>
-                A triangle mesh stores <em>vertices</em>, the sampled points;
-                <em>edges</em>, the links between them; and triangular
-                <em>faces</em>, the local surface pieces. Every face is flat,
-                while halfedge connectivity joins them into one closed curved
-                surface without a boundary.
-              </p>
-              <p>
-                More, better-shaped triangles usually reduce discretization
-                error, but increase assembly, factorization, rendering, and
-                storage costs. Thin or badly angled triangles also make
-                cotangent operators less reliable.
-              </p>
-              <p>
-                The central neck is <em>saddle-like</em>: along two tangent
-                directions, the surface bends in opposite ways. That geometric
-                description is visible in the generated shape; this project does
-                not claim a separate numerical Gaussian-curvature computation.
-              </p>
-              <p>
-                Edge Dijkstra sees only the graph of vertices and edges. It
-                finds the exact shortest route in that graph, but it cannot cut
-                across a triangle interior. Its result can zigzag or change with
-                the available edge directions, so it is a baseline rather than
-                the continuous surface answer.
-              </p>
-              <p class="margin-note">
-                The edge route is not an exact continuous geodesic on the
-                polyhedral surface.
-              </p>
-            </div>
-          </section>
-
-          <section
-            id="route-choice"
-            class="chapter chapter--choice"
-            data-act="3"
-            data-active-route-id="outer-ridge"
-            aria-labelledby="route-choice-title"
-          >
-            <div class="chapter-copy chapter-copy--wide">
-              <h2 id="route-choice-title">Three starts, one beacon.</h2>
-              <p>
-                C++ authors each start as a face plus barycentric coordinates
-                near a named surface feature. All three reuse one beacon, one
-                Heat Method distance field, and one Dijkstra predecessor tree.
-                The exporter rejects any trace that misses the source, invokes
-                fallback, duplicates another start, or produces an implausible
-                measurement.
-              </p>
-
-              <div
-                id="route-buttons"
-                class="route-buttons"
-                role="group"
-                aria-label="Native route starts"
-              ></div>
-
-              <article
-                id="route-details"
-                class="route-details"
-                data-active-route-id="outer-ridge"
-                aria-live="polite"
-              >
-                <h3 id="active-route-name">Outer ridge</h3>
-                <p id="active-route-description">
-                  The start and beacon lie on opposite sides of the world's
-                  strongest ridge.
-                </p>
-                <dl class="route-metrics" aria-label="Selected route lengths">
-                  <div>
-                    <dt>Ambient chord</dt>
-                    <dd id="ambient-length" data-route-metric="ambient">
-                      Loading exported value
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Edge Dijkstra</dt>
-                    <dd id="dijkstra-length" data-route-metric="dijkstra">
-                      Loading exported value
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Heat path</dt>
-                    <dd id="heat-length" data-route-metric="heat">
-                      Loading exported value
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-
-              <div class="route-actions" aria-label="Route controls">
-                <button id="replay-route" class="control-button" type="button">
-                  Replay this route
-                </button>
-                <button id="choose-route" class="control-button" type="button">
-                  Choose another route
-                </button>
+      <main id="story">
+        <div class="story-layout">
+          <div class="visual-column">
+            <div
+              id="world-stage"
+              class="world-stage"
+              aria-label="Interactive curved world visualization"
+            >
+              <div class="stage-header">
+                <div class="view-controls" aria-label="View controls">
+                  <button id="explore-view" type="button" aria-pressed="false">
+                    Explore view
+                  </button>
+                  <button id="reset-view" type="button">Reset view</button>
+                  <button id="focus-beacon" type="button">Focus beacon</button>
+                  <button id="focus-route-start" type="button">
+                    Focus route start
+                  </button>
+                </div>
                 <button
                   id="compare-routes"
-                  class="control-button"
+                  class="compare-control"
                   type="button"
                   aria-pressed="false"
+                  hidden
                 >
                   Compare all routes
                 </button>
               </div>
-            </div>
-          </section>
 
-          <section
-            id="release-heat"
-            class="chapter chapter--heat"
-            data-act="4"
-            aria-labelledby="heat-title"
-          >
-            <div class="chapter-copy">
-              <h2 id="heat-title">Warm the beacon for an instant.</h2>
-              <p>
-                Heat begins at the shared source, then diffuses through the
-                connected surface. It travels around each handle, through the
-                neck, through the basin, and across the outer relief because the
-                discrete equation has no route through ambient space.
-              </p>
-              <p class="revelation">Can the flow of heat reveal distance?</p>
-              <button
-                id="release-button"
-                class="release-button"
-                type="button"
-                aria-pressed="false"
-              >
-                Release heat
-              </button>
-              <p id="heat-status" class="button-note">
-                Six exported diffusion states, solved by the C++ engine.
-              </p>
-            </div>
-          </section>
-
-          <section
-            id="direction"
-            class="chapter"
-            data-act="5"
-            aria-labelledby="direction-title"
-          >
-            <div class="chapter-copy">
-              <h2 id="direction-title">Warmth becomes direction.</h2>
-              <p>
-                On each face, piecewise-linear heat values form a constant local
-                slope. The heat gradient points toward the hot source; negating
-                it points outward in the direction of increasing distance.
-                Normalizing keeps that direction while discarding the rapid
-                decay in magnitude. The route ultimately follows the
-                reconstructed distance field in the opposite direction.
-              </p>
-              <ol class="method-stages">
-                <li>
-                  <span>01</span>
-                  <div>
-                    <strong>Heat diffuses</strong>
-                    <small>Nearby surface points respond first</small>
-                  </div>
-                </li>
-                <li>
-                  <span>02</span>
-                  <div>
-                    <strong>The gradient gives direction</strong>
-                    <small>Facewise arrows follow the surface</small>
-                  </div>
-                </li>
-                <li>
-                  <span>03</span>
-                  <div>
-                    <strong>Poisson reconstructs distance</strong>
-                    <small>Local directions become one scalar field</small>
-                  </div>
-                </li>
-              </ol>
-              <p>
-                Those facewise directions need not fit one scalar field
-                perfectly. A Poisson solve finds the distance-like field whose
-                gradient agrees with them as closely as the discretization
-                allows. Tracing that field downhill across face interiors then
-                yields an approximate route to the beacon.
-              </p>
-            </div>
-          </section>
-
-          <section
-            id="mathematics"
-            class="chapter chapter--math"
-            data-act="6"
-            aria-labelledby="math-title"
-          >
-            <div class="chapter-copy chapter-copy--wide">
-              <h2 id="math-title">What does shortest mean on a surface?</h2>
-              <p>
-                Begin with an admissible route
-                <span data-math="\gamma:[0,1]\to M"></span>. The symbol
-                <span data-math="M"></span> names the surface, and
-                <span data-math="\gamma(t)"></span> is the explorer's current
-                point at parameter value <span data-math="t"></span>.
-              </p>
-              <p
-                class="equation equation--standalone"
-                data-math="L(\gamma)=\int_0^1\lVert\gamma'(t)\rVert\,dt"
-              ></p>
-              <p>
-                Here <span data-math="\gamma'(t)"></span> is tangent velocity,
-                its norm is instantaneous speed, and the integral accumulates
-                all infinitesimal lengths. As a sanity check, a constant-speed
-                straight segment in a flat plane has length equal to ordinary
-                endpoint distance. On the surface, the curve must also satisfy
-                the surface constraint.
-              </p>
-              <p>
-                More generally, a surface metric
-                <span data-math="g"></span> tells us how tangent motion is
-                measured at each point:
-              </p>
-              <p
-                class="equation equation--standalone"
-                data-math="L(\gamma)=\int_0^1\sqrt{\gamma'(t)^{\mathsf T}g_{\gamma(t)}\gamma'(t)}\,dt"
-              ></p>
-              <p>
-                The matrix <span data-math="g_{\gamma(t)}"></span> is the metric
-                at the current point. It converts a tangent velocity into
-                squared surface speed. The square root gives an infinitesimal
-                length, and integration adds those pieces along the full route.
-                The triangle mesh approximates this smooth geometry, so its
-                numerical lengths inherit discretization error.
-              </p>
-              <p
-                class="equation equation--standalone"
-                data-math="d_M(p,q)=\inf_{\substack{\gamma(0)=p,\,\gamma(1)=q\\\gamma(t)\in M}}L(\gamma)"
-              ></p>
-              <p>
-                The <em>infimum</em> is the best length approached by all legal
-                surface paths from <span data-math="p"></span> to
-                <span data-math="q"></span>. A <em>geodesic</em> is locally
-                straight according to the surface's own geometry. It need not
-                look straight from the ambient room. The rendered trace is a
-                numerical approximation to this ideal object, not an exact
-                continuous geodesic.
-              </p>
-
-              <div
-                class="distance-problems"
-                aria-label="Three distance problems"
-              >
-                <article>
-                  <span>01</span>
-                  <h3>Ambient chord</h3>
-                  <p>Movement is allowed anywhere in surrounding 3D space.</p>
-                </article>
-                <article>
-                  <span>02</span>
-                  <h3>Edge Dijkstra</h3>
-                  <p>Movement is allowed only along the mesh-edge graph.</p>
-                </article>
-                <article>
-                  <span>03</span>
-                  <h3>Heat trace</h3>
-                  <p>
-                    Movement crosses triangle interiors on the mesh surface.
-                  </p>
-                </article>
-              </div>
-              <p class="margin-note">
-                The three reported numbers answer different constrained
-                problems. Comparing their domains matters as much as comparing
-                their magnitudes.
-              </p>
-
-              <h3 class="math-subheading">
-                The Heat Method, one stage at a time
-              </h3>
-              <p>
-                The method does not search through complete paths. It first asks
-                how a very brief pulse spreads from the source, then turns that
-                local response into a global distance-like field.
-              </p>
-
-              <div class="equation-step">
-                <span class="equation-number">1</span>
-                <div>
-                  <p class="equation" data-math="(M+tL)u=M\delta"></p>
-                  <p>
-                    <strong>Create a brief heat impulse.</strong> The vector
-                    <span data-math="\delta"></span> identifies the source. The
-                    lumped mass matrix <span data-math="M"></span> distributes
-                    vertex values according to surrounding area. The stiffness
-                    matrix <span data-math="L"></span>
-                    discretizes the positive-semidefinite Laplace-Beltrami
-                    operator, and
-                    <span data-math="t"></span> is a short diffusion time. The
-                    solution <span data-math="u"></span> is temperature.
-                  </p>
-                  <p>
-                    Choosing <span data-math="t\approx h^2"></span>, where
-                    <span data-math="h"></span> is mean edge length, ties the
-                    pulse to mesh scale. At short times, points reached sooner
-                    tend to be closer along the surface. Too much diffusion
-                    blurs local distance information; too little magnifies
-                    discretization noise.
-                  </p>
-                </div>
-              </div>
-
-              <div class="equation-step">
-                <span class="equation-number">2</span>
-                <div>
-                  <p
-                    class="equation"
-                    data-math="X=-\frac{\nabla u}{\lVert\nabla u\rVert}"
-                  ></p>
-                  <p>
-                    <strong>Read direction.</strong> Each face has a constant
-                    piecewise-linear heat gradient. Since heat is largest near
-                    the source, <span data-math="\nabla u"></span> points toward
-                    hotter values. The minus sign turns it outward, so
-                    <span data-math="X"></span> aligns with increasing distance.
-                    Normalization removes decay in magnitude while retaining
-                    direction. The final route later follows decreasing distance
-                    back toward the source.
-                  </p>
-                </div>
-              </div>
-
-              <div class="equation-step">
-                <span class="equation-number">3</span>
-                <div>
-                  <p
-                    class="equation"
-                    data-math="L\phi=b_X,\qquad (b_X)_i=\sum_f A_f\,\nabla b_i\!\cdot X_f"
-                  ></p>
-                  <p>
-                    <strong>Reconstruct distance.</strong> Independent facewise
-                    arrows may not be the gradient of one globally consistent
-                    scalar function. The load <span data-math="b_X"></span> is
-                    their weak divergence. The Poisson solve finds a scalar
-                    field <span data-math="\phi"></span> whose gradient best
-                    agrees with <span data-math="X"></span> over the mesh.
-                  </p>
-                  <p>
-                    Adding a constant to every value would leave all gradients
-                    unchanged, so the system otherwise has one arbitrary degree
-                    of freedom. The implementation pins one reference value,
-                    then shifts the solved field so the source distance is zero.
-                    This plain reference choice is often called gauge fixing.
-                  </p>
-                </div>
-              </div>
-
-              <div class="equation-step">
-                <span class="equation-number">4</span>
-                <div>
-                  <p
-                    class="equation"
-                    data-math="\dot\gamma\propto-\nabla\phi"
-                  ></p>
-                  <p>
-                    <strong>Trace across faces.</strong> The native tracer
-                    starts from an authored face and barycentric point, follows
-                    decreasing <span data-math="\phi"></span> to a barycentric
-                    edge crossing, enters the adjacent face, and repeats until
-                    it reaches the source neighborhood. Critical regions can
-                    stop a face tracer, so every published preset is validated
-                    to reach the source without fallback.
-                  </p>
-                </div>
-              </div>
-
-              <div class="cotangent-note">
-                <div>
-                  <p
-                    class="equation"
-                    data-math="w_{ij}=\frac{1}{2}\left(\cot\alpha_{ij}+\cot\beta_{ij}\right)"
-                  ></p>
-                </div>
-                <p>
-                  The weight on an interior edge comes from the two angles
-                  <span data-math="\alpha_{ij}"></span> and
-                  <span data-math="\beta_{ij}"></span> opposite that shared
-                  edge. These local angles assemble the discrete operator. Poor
-                  triangle quality can therefore degrade the approximation even
-                  when the topology is correct.
-                </p>
-              </div>
-
-              <div class="math-caveat">
-                <h3>What remains approximate</h3>
-                <ul>
-                  <li>The Heat Method result is an approximation.</li>
-                  <li>
-                    The triangle mesh discretizes the intended smooth surface.
-                  </li>
-                  <li>A face tracer can encounter critical regions.</li>
-                  <li>Cotangent operators depend on triangle quality.</li>
-                  <li>Dijkstra is restricted to mesh edges.</li>
-                  <li>
-                    A multi-handle world can have nearly equal routes in
-                    different homotopy classes.
-                  </li>
-                  <li>
-                    All numerical computation in this project is CPU-only.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <section
-            id="route-comparison"
-            class="chapter chapter--comparison"
-            data-act="7"
-            aria-labelledby="comparison-title"
-          >
-            <div class="chapter-copy chapter-copy--wide">
-              <h2 id="comparison-title">One field, three journeys.</h2>
-              <p>
-                Comparison mode draws all three traced Heat Method paths on the
-                same selected surface. Their starts and measured lengths are
-                distinct, but the source solve remains shared. A restrained
-                x-ray overlay is used only here to keep hidden path portions
-                readable; ordinary modes preserve surface occlusion.
-              </p>
-
-              <div
-                id="comparison-panel"
-                class="comparison-panel"
-                aria-live="polite"
-                tabindex="-1"
-              >
+              <div class="canvas-frame">
+                <canvas
+                  id="world-canvas"
+                  tabindex="0"
+                  aria-label="An interactive C++-generated triangulated surface with an amber heat source"
+                  aria-describedby="world-instructions scene-caption"
+                ></canvas>
                 <div
-                  id="comparison-legend"
-                  class="comparison-legend"
-                  aria-label="Route colors"
+                  id="loading"
+                  class="loading"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span aria-hidden="true"></span>
+                  <p>Loading Genus 2 world</p>
+                </div>
+                <div id="webgl-fallback" class="webgl-fallback" hidden>
+                  <div class="fallback-world" aria-hidden="true"></div>
+                  <p>
+                    The interactive rendering is unavailable. The measured
+                    routes, guided story, and mathematics remain available.
+                  </p>
+                </div>
+              </div>
+
+              <p id="scene-caption" class="scene-caption" aria-live="polite">
+                A closed Genus 2 surface generated and solved by the C++ engine.
+              </p>
+
+              <div class="stage-footer">
+                <div
+                  id="genus-selector"
+                  class="genus-selector"
+                  role="group"
+                  aria-label="Surface genus"
+                >
+                  <button type="button" data-genus="1" aria-pressed="false">
+                    Genus 1
+                  </button>
+                  <button type="button" data-genus="2" aria-pressed="true">
+                    Genus 2
+                  </button>
+                  <button type="button" data-genus="3" aria-pressed="false">
+                    Genus 3
+                  </button>
+                </div>
+              </div>
+
+              <p id="world-instructions" class="sr-only">
+                Use the labeled view buttons or the canvas keyboard controls.
+                Arrow keys orbit, plus and minus zoom, R resets, and Escape
+                leaves Explore view.
+              </p>
+            </div>
+          </div>
+
+          <div id="story-chapters" class="story-chapters">
+            <section
+              id="arrival"
+              class="chapter chapter--opening is-active"
+              data-act="0"
+              data-unlocked="false"
+              aria-labelledby="arrival-title"
+            >
+              <div class="chapter-copy">
+                <h1 id="arrival-title" class="chapter-title" tabindex="-1">
+                  The Shortest Path Through a Curved World
+                </h1>
+                <p class="subtitle">
+                  How heat reconstructs distance on a triangulated surface.
+                </p>
+                <p class="lead">
+                  An explorer stands on a folded world. An amber beacon waits
+                  across its ridges, necks, and basin. What is the shortest
+                  route that never leaves the surface?
+                </p>
+                <p>
+                  Genus counts handles: Genus 1 has one, Genus 2 has two, and
+                  Genus 3 has three. For a connected, closed, orientable
+                  triangulated surface,
+                  <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
+                  changes global topology, not merely cosmetic shape.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="0"
+                  >
+                    Proceed
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="straight-line"
+              class="chapter"
+              data-act="1"
+              data-unlocked="false"
+              aria-labelledby="straight-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy">
+                <h2 id="straight-title" class="chapter-title" tabindex="-1">
+                  Why not draw a straight line?
+                </h2>
+                <p>
+                  The curved world is a two-dimensional surface inside ordinary
+                  three-dimensional space. That surrounding room is the
+                  <em>ambient space</em>. A straight line may move anywhere in
+                  that room, including places where the surface is absent.
+                </p>
+                <p
+                  class="equation equation--compact"
+                  data-math="c(s)=(1-s)p+sq,\qquad 0\le s\le 1"
+                ></p>
+                <p>
+                  This segment is the <em>ambient chord</em> from start
+                  <span data-math="p"></span> to beacon
+                  <span data-math="q"></span>. It is shortest in Euclidean 3D,
+                  but it can leave the surface, cut through a tube, or cross
+                  empty space inside a hole.
+                </p>
+                <p>
+                  A <em>surface path</em> is a continuous curve
+                  <span data-math="\gamma"></span> whose every point lies on the
+                  surface. Such a path is <em>admissible</em>, meaning it is a
+                  route the explorer is allowed to walk. The chord usually is
+                  not.
+                </p>
+                <div class="distance-key" aria-label="Distance comparison">
+                  <span><i class="ambient-swatch"></i> Ambient chord</span>
+                  <span><i class="surface-swatch"></i> Surface path</span>
+                </div>
+                <p class="margin-note">
+                  A shorter number is not a valid answer when its path violates
+                  the constraint.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="1"
+                  >
+                    Proceed
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="triangles"
+              class="chapter"
+              data-act="2"
+              data-unlocked="false"
+              aria-labelledby="triangles-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy">
+                <h2 id="triangles-title" class="chapter-title" tabindex="-1">
+                  How can a computer hold the surface?
+                </h2>
+                <p>
+                  A <em>triangle mesh</em> stores sampled points called
+                  vertices, links called edges, and triangular faces. Every face
+                  is flat. Halfedge connectivity, a directed-edge record that
+                  links neighboring faces, joins them into one closed surface
+                  without a boundary.
+                </p>
+                <p>
+                  More, better-shaped triangles usually reduce discretization
+                  error, but increase assembly, factorization, rendering, and
+                  storage costs. Thin or badly angled triangles also make
+                  cotangent operators less reliable.
+                </p>
+                <p>
+                  The central neck is <em>saddle-like</em>: along two tangent
+                  directions, the surface bends in opposite ways. That shape is
+                  visible in the generated geometry. This project does not claim
+                  a separate numerical Gaussian-curvature computation.
+                </p>
+                <p>
+                  Edge Dijkstra sees only the graph of vertices and edges. It
+                  finds the exact shortest route in that graph, but it cannot
+                  cut across a triangle interior. Its result can zigzag or
+                  change with the available edge directions, so it is a baseline
+                  rather than the continuous surface answer.
+                </p>
+                <p class="margin-note">
+                  The edge route is not an exact continuous geodesic on the
+                  polyhedral surface.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="2"
+                  >
+                    Proceed
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="route-choice"
+              class="chapter chapter--choice"
+              data-act="3"
+              data-unlocked="false"
+              data-active-route-id=""
+              aria-labelledby="route-choice-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy chapter-copy--wide">
+                <h2 id="route-choice-title" class="chapter-title" tabindex="-1">
+                  Three starts, one beacon
+                </h2>
+                <p>
+                  Choose where the explorer begins. C++ stores each start as a
+                  face plus three weights that locate a point inside that face.
+                  These are <em>barycentric coordinates</em>. All three starts
+                  reuse one beacon, one Heat Method distance field, and one
+                  Dijkstra predecessor tree.
+                </p>
+                <p>
+                  The exporter rejects a trace if it misses the source, uses
+                  fallback, duplicates another start, or produces an implausible
+                  measurement.
+                </p>
+
+                <div
+                  id="route-buttons"
+                  class="route-buttons"
+                  role="group"
+                  aria-label="Exported route starts"
                 ></div>
 
-                <div class="comparison-table-wrap" tabindex="0">
-                  <table class="comparison-table">
-                    <caption>
-                      Exported route lengths
-                    </caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Route</th>
-                        <th scope="col">Chord</th>
-                        <th scope="col">Dijkstra</th>
-                        <th scope="col">Heat path</th>
-                      </tr>
-                    </thead>
-                    <tbody id="comparison-table-body"></tbody>
-                  </table>
+                <p id="route-selection-prompt" class="gate-note">
+                  Select one route to reveal its measured path and continue.
+                </p>
+
+                <article
+                  id="route-details"
+                  class="route-details"
+                  data-active-route-id=""
+                  aria-live="polite"
+                  hidden
+                >
+                  <h3 id="active-route-name"></h3>
+                  <p id="active-route-description"></p>
+                  <dl class="route-metrics" aria-label="Selected route lengths">
+                    <div>
+                      <dt>Ambient chord</dt>
+                      <dd id="ambient-length" data-route-metric="ambient"></dd>
+                    </div>
+                    <div>
+                      <dt>Edge Dijkstra</dt>
+                      <dd
+                        id="dijkstra-length"
+                        data-route-metric="dijkstra"
+                      ></dd>
+                    </div>
+                    <div>
+                      <dt>Heat Method trace</dt>
+                      <dd id="heat-length" data-route-metric="heat"></dd>
+                    </div>
+                  </dl>
+                </article>
+
+                <div class="chapter-proceed">
+                  <button
+                    id="route-proceed"
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="3"
+                    aria-describedby="route-selection-prompt"
+                    disabled
+                  >
+                    Proceed
+                  </button>
                 </div>
               </div>
-              <p class="margin-note">
-                Differences among the three columns are meaningful only within
-                each distance model. The Heat Method path is reconstructed from
-                the field, not read from the Dijkstra tree.
-              </p>
-            </div>
-          </section>
+            </section>
 
-          <section
-            id="scale"
-            class="chapter chapter--scale"
-            data-act="8"
-            aria-labelledby="scale-title"
-          >
-            <div class="chapter-copy chapter-copy--wide">
-              <h2 id="scale-title">Geometry becomes sparse algebra.</h2>
-              <p>
-                Most vertices interact only with their one-ring neighbors. Eigen
-                assembles sparse mass and stiffness operators on the CPU.
-                Assembly and factorization are preprocessing; later source
-                queries reuse them. The three authored routes therefore share
-                one distance field rather than exporting redundant solves.
-              </p>
-              <div
-                id="benchmark-chart"
-                class="benchmark-chart"
-                role="img"
-                aria-label="Measured CPU scaling benchmark"
-              ></div>
-              <div class="timing-legend">
-                <span><i class="preprocess-swatch"></i> Preprocess once</span>
-                <span><i class="query-swatch"></i> Heat Method query</span>
-                <span><i class="dijkstra-swatch"></i> Edge Dijkstra query</span>
+            <section
+              id="release-heat"
+              class="chapter chapter--heat"
+              data-act="4"
+              data-unlocked="false"
+              aria-labelledby="heat-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy">
+                <h2 id="heat-title" class="chapter-title" tabindex="-1">
+                  Release heat
+                </h2>
+                <p>
+                  Heat begins at the shared beacon, then diffuses through the
+                  connected surface. It travels around handles, through necks,
+                  and across relief because the discrete equation offers no
+                  route through ambient space.
+                </p>
+                <p class="revelation">Can the flow of heat reveal distance?</p>
+                <button
+                  id="release-button"
+                  class="release-button"
+                  type="button"
+                  aria-pressed="false"
+                  aria-describedby="heat-status"
+                >
+                  Release heat
+                </button>
+                <p
+                  id="heat-status"
+                  class="button-note"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  Six exported diffusion states are ready.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    id="heat-proceed"
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="4"
+                    aria-describedby="heat-status"
+                    disabled
+                  >
+                    Proceed
+                  </button>
+                </div>
               </div>
-              <p id="benchmark-caption" class="margin-note">
-                Loading measured benchmark data.
-              </p>
-            </div>
-          </section>
+            </section>
 
-          <section
-            id="answer"
-            class="chapter chapter--answer"
-            data-act="9"
-            aria-labelledby="answer-title"
-          >
-            <div class="chapter-copy">
-              <h2 id="answer-title">Heat reveals a way home.</h2>
-              <p>
-                Diffuse from the beacon, normalize the facewise gradient,
-                reconstruct distance, then follow that field downhill across the
-                actual surface. The result is approximate, measurable, and
-                repeatable for every authored start.
-              </p>
-              <button id="replay-journey" class="control-button" type="button">
-                Replay the full journey <span aria-hidden="true">↺</span>
-              </button>
-            </div>
-          </section>
-        </div>
-      </div>
+            <section
+              id="direction"
+              class="chapter"
+              data-act="5"
+              data-unlocked="false"
+              aria-labelledby="direction-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy">
+                <h2 id="direction-title" class="chapter-title" tabindex="-1">
+                  Warmth becomes direction
+                </h2>
+                <p>
+                  On each face, piecewise-linear heat values form a constant
+                  local slope. A <em>gradient</em> is the direction and rate of
+                  steepest increase. The heat gradient points toward the hot
+                  source, so negating it points outward toward increasing
+                  distance. Normalizing keeps direction while discarding
+                  magnitude.
+                </p>
+                <ol class="method-stages">
+                  <li>
+                    <span>01</span>
+                    <div>
+                      <strong>Heat diffuses</strong>
+                      <small>Nearby surface points respond first</small>
+                    </div>
+                  </li>
+                  <li>
+                    <span>02</span>
+                    <div>
+                      <strong>The gradient gives direction</strong>
+                      <small>Facewise arrows follow the surface</small>
+                    </div>
+                  </li>
+                  <li>
+                    <span>03</span>
+                    <div>
+                      <strong>Poisson reconstructs distance</strong>
+                      <small>Local directions become one scalar field</small>
+                    </div>
+                  </li>
+                </ol>
+                <p>
+                  Those facewise directions need not fit one scalar field
+                  perfectly. A Poisson solve finds the distance-like field whose
+                  gradient agrees with them as closely as the discretization
+                  allows. Tracing that field downhill across face interiors
+                  yields an approximate route to the beacon.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="5"
+                  >
+                    Proceed
+                  </button>
+                </div>
+              </div>
+            </section>
 
-      <section
-        id="under-the-hood"
-        class="under-hood"
-        aria-labelledby="under-title"
-      >
-        <div class="under-intro">
-          <h2 id="under-title">Under the hood</h2>
-          <p>
-            The page is static, but its geometry and numerical fields are not
-            browser inventions. A deterministic native pipeline produces the
-            surface, solves the field, validates the routes, and writes the
-            files rendered here.
-          </p>
-        </div>
+            <section
+              id="mathematics"
+              class="chapter chapter--math"
+              data-act="6"
+              data-unlocked="false"
+              aria-labelledby="math-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy chapter-copy--wide">
+                <h2 id="math-title" class="chapter-title" tabindex="-1">
+                  What does shortest mean on a surface?
+                </h2>
+                <p>
+                  Begin with an admissible route
+                  <span data-math="\gamma:[0,1]\to M"></span>. The symbol
+                  <span data-math="M"></span> names the surface, and
+                  <span data-math="\gamma(t)"></span> is the explorer's point at
+                  parameter value <span data-math="t"></span>.
+                </p>
+                <p
+                  class="equation equation--standalone"
+                  data-math="L(\gamma)=\int_0^1\lVert\gamma'(t)\rVert\,dt"
+                ></p>
+                <p>
+                  Here <span data-math="\gamma'(t)"></span> is tangent velocity,
+                  its norm is instantaneous speed, and the integral adds all
+                  infinitesimal lengths. A constant-speed straight segment in a
+                  flat plane has length equal to ordinary endpoint distance. On
+                  this world, the curve must also satisfy the surface
+                  constraint.
+                </p>
+                <p>
+                  A surface <em>metric</em> tells us how tangent motion is
+                  measured at every point:
+                </p>
+                <p
+                  class="equation equation--standalone"
+                  data-math="L(\gamma)=\int_0^1\sqrt{\gamma'(t)^{\mathsf T}g_{\gamma(t)}\gamma'(t)}\,dt"
+                ></p>
+                <p>
+                  The matrix <span data-math="g_{\gamma(t)}"></span> converts a
+                  tangent velocity into squared surface speed. The mesh
+                  approximates this smooth geometry, so its numerical lengths
+                  inherit discretization error.
+                </p>
+                <p
+                  class="equation equation--standalone"
+                  data-math="d_M(p,q)=\inf_{\substack{\gamma(0)=p,\,\gamma(1)=q\\\gamma(t)\in M}}L(\gamma)"
+                ></p>
+                <p>
+                  The <em>infimum</em> is the best length approached by all
+                  legal surface paths from <span data-math="p"></span> to
+                  <span data-math="q"></span>. A <em>geodesic</em> is a path
+                  that is locally straight according to the surface's own
+                  metric. It need not look straight in ambient space. The
+                  rendered trace approximates this ideal object on the triangle
+                  mesh.
+                </p>
 
-        <div class="technical-grid">
-          <article>
-            <span>01</span>
-            <h3>C++20 multi-genus generation</h3>
-            <p>
-              A project-specific implicit field thickens a deterministic chain
-              of rounded loops. Native marching tetrahedra reuses edge
-              intersections, smooths tangentially, reprojects to the level set,
-              and verifies orientation, manifold structure, Euler
-              characteristic, triangle quality, and deterministic landmarks.
-            </p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>Eigen sparse solves</h3>
-            <p>
-              Lumped areas form the mass matrix, cotangent weights form the
-              symmetric stiffness matrix, and barycentric gradients supply the
-              facewise differential operators. Eigen runs reusable direct and
-              iterative CPU paths and reports relative residuals.
-            </p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>Deterministic native export</h3>
-            <p>
-              The exporter writes compact indexed geometry, adjacency, six heat
-              states, the distance field, Dijkstra distances and predecessors,
-              gradient samples, semantic route presets, native trace
-              measurements, topology, and residual metadata.
-            </p>
-          </article>
-          <article>
-            <span>04</span>
-            <h3>TypeScript interpretation</h3>
-            <p>
-              TypeScript validates binary schema version 3, topology, path
-              ranges, and measurements. The displayed green path is the native
-              C++ trace; an independent browser tracer remains a correctness
-              check rather than the authoritative geometry.
-            </p>
-          </article>
-          <article>
-            <span>05</span>
-            <h3>Persistent presentation</h3>
-            <p>
-              Three.js renders the selected native world on one reusable canvas
-              while the damped camera orbits it. KaTeX emits HTML and MathML
-              notation. Both libraries are bundled into the static GitHub Pages
-              build, including the local STIX Two Text files used by the prose.
-            </p>
-          </article>
-          <article>
-            <span>06</span>
-            <h3>Numerical and browser tests</h3>
-            <p>
-              Native tests validate topology, operators, residuals, route
-              reconstruction, and byte-for-byte deterministic export. Playwright
-              exercises every route, heat replay, comparison, camera input,
-              accessibility state, responsive stacking, fallback behavior, and
-              dark surfaces.
-            </p>
-          </article>
-        </div>
+                <div
+                  class="distance-problems"
+                  aria-label="Three distance problems"
+                >
+                  <article>
+                    <span>01</span>
+                    <h3>Ambient chord</h3>
+                    <p>Movement is allowed anywhere in surrounding 3D space.</p>
+                  </article>
+                  <article>
+                    <span>02</span>
+                    <h3>Edge Dijkstra</h3>
+                    <p>Movement is allowed only along the mesh-edge graph.</p>
+                  </article>
+                  <article>
+                    <span>03</span>
+                    <h3>Heat Method trace</h3>
+                    <p>Movement crosses triangle interiors on the mesh.</p>
+                  </article>
+                </div>
+                <p class="margin-note">
+                  The three numbers answer different constrained problems. Their
+                  domains matter as much as their magnitudes.
+                </p>
 
-        <div class="implementation-notes">
-          <div>
-            <p>Exported primary solve</p>
-            <dl id="residual-list">
-              <div>
-                <dt>Mesh</dt>
-                <dd>Loading exported metadata</dd>
+                <h3 class="math-subheading">
+                  The Heat Method, one stage at a time
+                </h3>
+                <p>
+                  The method does not search through complete paths. It asks how
+                  a brief pulse spreads from the source, then turns that local
+                  response into a global distance-like field.
+                </p>
+
+                <div class="equation-step">
+                  <span class="equation-number">1</span>
+                  <div>
+                    <p class="equation" data-math="(M+tL)u=M\delta"></p>
+                    <p>
+                      <strong>Create a brief heat impulse.</strong> The vector
+                      <span data-math="\delta"></span> marks the source. The
+                      <em>mass matrix</em> <span data-math="M"></span> assigns
+                      area to vertices. The <em>stiffness matrix</em>
+                      <span data-math="L"></span> measures changes across
+                      neighboring vertices. It discretizes the positive
+                      semidefinite Laplace-Beltrami operator, the surface
+                      version of the operator that describes diffusion. The
+                      solution <span data-math="u"></span> is temperature.
+                    </p>
+                    <p>
+                      Choosing <span data-math="t\approx h^2"></span>, where
+                      <span data-math="h"></span> is mean edge length, ties the
+                      pulse to mesh scale. Too much diffusion blurs local
+                      distance information. Too little magnifies discretization
+                      noise.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="equation-step">
+                  <span class="equation-number">2</span>
+                  <div>
+                    <p
+                      class="equation"
+                      data-math="X=-\frac{\nabla u}{\lVert\nabla u\rVert}"
+                    ></p>
+                    <p>
+                      <strong>Read direction.</strong> Since heat is largest
+                      near the source, <span data-math="\nabla u"></span> points
+                      toward hotter values. The minus sign turns it outward, so
+                      <span data-math="X"></span> aligns with increasing
+                      distance. The final route follows decreasing distance back
+                      toward the source.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="equation-step">
+                  <span class="equation-number">3</span>
+                  <div>
+                    <p
+                      class="equation"
+                      data-math="L\phi=b_X,\qquad (b_X)_i=\sum_f A_f\,\nabla b_i\!\cdot X_f"
+                    ></p>
+                    <p>
+                      <strong>Reconstruct distance.</strong> Divergence measures
+                      the net flow out of a local region. The load
+                      <span data-math="b_X"></span> is the weak, integrated
+                      divergence of the arrows. The Poisson equation links that
+                      divergence to a scalar field
+                      <span data-math="\phi"></span> whose gradient best agrees
+                      with <span data-math="X"></span> over the mesh.
+                    </p>
+                    <p>
+                      Adding a constant leaves every gradient unchanged, so the
+                      system has one arbitrary degree of freedom. The
+                      implementation pins one reference value, then shifts the
+                      solved field so the source distance is zero. This
+                      reference choice is called <em>gauge fixing</em>.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="equation-step">
+                  <span class="equation-number">4</span>
+                  <div>
+                    <p
+                      class="equation"
+                      data-math="\dot\gamma\propto-\nabla\phi"
+                    ></p>
+                    <p>
+                      <strong>Trace across faces.</strong> The C++ tracer starts
+                      from an exported face and barycentric point, follows
+                      decreasing <span data-math="\phi"></span> to an edge,
+                      enters the adjacent face, and repeats until it reaches the
+                      source neighborhood. Critical regions can stop a face
+                      tracer, so every published preset is validated to reach
+                      the source without fallback.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="cotangent-note">
+                  <div>
+                    <p
+                      class="equation"
+                      data-math="w_{ij}=\frac{1}{2}\left(\cot\alpha_{ij}+\cot\beta_{ij}\right)"
+                    ></p>
+                  </div>
+                  <p>
+                    The weight on an interior edge comes from the two angles
+                    opposite that edge. These local angles assemble the discrete
+                    operator, so poor triangle quality can degrade the
+                    approximation even when topology is correct.
+                  </p>
+                </div>
+
+                <div class="math-caveat">
+                  <h3>What remains approximate</h3>
+                  <ul>
+                    <li>The Heat Method result is an approximation.</li>
+                    <li>The triangle mesh discretizes a smooth surface.</li>
+                    <li>A face tracer can encounter critical regions.</li>
+                    <li>Cotangent operators depend on triangle quality.</li>
+                    <li>Dijkstra is restricted to mesh edges.</li>
+                    <li>
+                      Routes can loop around handles in topologically different
+                      ways, called different homotopy classes.
+                    </li>
+                    <li>
+                      All numerical computation in this project is CPU-only.
+                    </li>
+                  </ul>
+                </div>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="6"
+                  >
+                    Proceed
+                  </button>
+                </div>
               </div>
-              <div>
-                <dt>Heat residual</dt>
-                <dd>Loading exported metadata</dd>
+            </section>
+
+            <section
+              id="route-comparison"
+              class="chapter chapter--comparison"
+              data-act="7"
+              data-unlocked="false"
+              aria-labelledby="comparison-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy chapter-copy--wide">
+                <h2 id="comparison-title" class="chapter-title" tabindex="-1">
+                  Compare routes
+                </h2>
+                <p>
+                  The control above the world can draw all three validated Heat
+                  Method traces on the selected surface. Their starts and
+                  lengths differ, but the source solve is shared. A restrained
+                  x-ray treatment appears only in comparison mode so paths on
+                  the far side remain readable.
+                </p>
+
+                <div
+                  id="comparison-panel"
+                  class="comparison-panel"
+                  aria-live="polite"
+                  tabindex="-1"
+                  hidden
+                >
+                  <div
+                    id="comparison-legend"
+                    class="comparison-legend"
+                    aria-label="Route colors"
+                  ></div>
+                  <div class="comparison-table-wrap" tabindex="0">
+                    <table class="comparison-table">
+                      <caption>
+                        Exported route lengths
+                      </caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Route</th>
+                          <th scope="col">Chord</th>
+                          <th scope="col">Dijkstra</th>
+                          <th scope="col">Heat trace</th>
+                        </tr>
+                      </thead>
+                      <tbody id="comparison-table-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <p class="margin-note">
+                  Each column is meaningful within its own distance model. The
+                  Heat Method trace comes from the reconstructed field, not the
+                  Dijkstra tree.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="7"
+                  >
+                    Proceed
+                  </button>
+                </div>
               </div>
-              <div>
-                <dt>Poisson residual</dt>
-                <dd>Loading exported metadata</dd>
+            </section>
+
+            <section
+              id="scale"
+              class="chapter chapter--scale"
+              data-act="8"
+              data-unlocked="false"
+              aria-labelledby="scale-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy chapter-copy--wide">
+                <h2 id="scale-title" class="chapter-title" tabindex="-1">
+                  Geometry becomes sparse algebra
+                </h2>
+                <p>
+                  Most vertices interact only with their
+                  <em>one-ring neighbors</em>, the vertices connected to them by
+                  one edge. Eigen assembles sparse mass and stiffness operators
+                  on the CPU. Assembly and factorization happen once, then later
+                  source queries reuse them. The three routes share one distance
+                  field rather than exporting redundant solves.
+                </p>
+                <div
+                  id="benchmark-chart"
+                  class="benchmark-chart"
+                  role="img"
+                  aria-label="Measured CPU scaling benchmark"
+                ></div>
+                <div class="timing-legend">
+                  <span><i class="preprocess-swatch"></i> Preprocess once</span>
+                  <span><i class="query-swatch"></i> Heat Method query</span>
+                  <span
+                    ><i class="dijkstra-swatch"></i> Edge Dijkstra query</span
+                  >
+                </div>
+                <p id="benchmark-caption" class="margin-note">
+                  Loading measured CPU benchmark data.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="8"
+                  >
+                    Proceed
+                  </button>
+                </div>
               </div>
-              <div>
-                <dt>Encoding</dt>
-                <dd>
-                  Binary schema v3, native paths, log-quantized heat frames
-                </dd>
+            </section>
+
+            <section
+              id="answer"
+              class="chapter chapter--answer"
+              data-act="9"
+              data-unlocked="false"
+              aria-labelledby="answer-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy">
+                <h2 id="answer-title" class="chapter-title" tabindex="-1">
+                  Answer
+                </h2>
+                <p class="lead">Heat reveals a way home.</p>
+                <p>
+                  Diffuse from the beacon, normalize the facewise gradient,
+                  reconstruct distance, then follow that field downhill across
+                  the mesh surface. The route is approximate, measurable, and
+                  repeatable for every exported start.
+                </p>
+                <div class="chapter-proceed">
+                  <button
+                    class="proceed-button"
+                    type="button"
+                    data-proceed-act="9"
+                  >
+                    Proceed
+                  </button>
+                </div>
               </div>
-            </dl>
+            </section>
           </div>
-          <div>
-            <p>Limitations</p>
+        </div>
+
+        <section
+          id="under-the-hood"
+          class="under-hood chapter"
+          data-act="10"
+          data-unlocked="false"
+          aria-labelledby="under-title"
+          hidden
+          inert
+        >
+          <div class="under-intro">
+            <h2 id="under-title" class="chapter-title" tabindex="-1">
+              Under the hood
+            </h2>
             <p>
-              The surface is discretized, the Heat Method is approximate, and
-              cotangent accuracy depends on triangle quality. Dijkstra is
-              edge-restricted. Face tracing can fail near critical regions,
-              although every published preset is verified without fallback.
-              Distinct routes around a handle can be nearly equal. The project
-              uses CPU computation throughout.
+              The page is static, but its geometry and numerical fields are not
+              browser inventions. A deterministic C++ pipeline produces the
+              surface, solves the field, validates the routes, and writes the
+              files rendered here.
             </p>
           </div>
-        </div>
 
-        <div class="references">
-          <h3>Primary references</h3>
-          <ol>
-            <li>
-              Keenan Crane, Clarisse Weischedel, and Max Wardetzky.
-              <a
-                href="https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf"
-                >“Geodesics in Heat: A New Approach to Computing Distance Based
-                on Heat Flow.”</a
-              >
-              ACM Transactions on Graphics 32(5), 2013.
-            </li>
-            <li>
-              Keenan Crane.
-              <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/"
-                >Discrete Differential Geometry course materials.</a
-              >
-              Carnegie Mellon University.
-            </li>
-            <li>
-              <a
-                href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
-                >Source, tests, benchmark methodology, and interview guide.</a
-              >
-            </li>
-          </ol>
-        </div>
-      </section>
-    </main>
+          <div class="technical-grid">
+            <article>
+              <span>01</span>
+              <h3>C++20 multi-genus generation</h3>
+              <p>
+                A project-specific implicit field thickens a deterministic chain
+                of rounded loops. Marching tetrahedra reuses edge intersections,
+                smooths tangentially, reprojects to the level set, and verifies
+                orientation, manifold structure, Euler characteristic, triangle
+                quality, and landmarks.
+              </p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Eigen sparse solves</h3>
+              <p>
+                Lumped areas form the mass matrix, cotangent weights form the
+                symmetric stiffness matrix, and barycentric gradients supply
+                facewise differential operators. Eigen runs reusable direct and
+                iterative CPU paths.
+              </p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3>Deterministic C++ export</h3>
+              <p>
+                The exporter writes indexed geometry, adjacency, six heat
+                states, distance, Dijkstra data, gradient samples, route
+                presets, C++ trace measurements, topology, and solver metadata.
+              </p>
+            </article>
+            <article>
+              <span>04</span>
+              <h3>TypeScript interpretation</h3>
+              <p>
+                TypeScript validates binary schema version 3, topology, path
+                ranges, and measurements. The displayed green paths are C++
+                traces. A browser tracer remains a cross-check, not the source
+                of the displayed geometry.
+              </p>
+            </article>
+            <article>
+              <span>05</span>
+              <h3>Persistent presentation</h3>
+              <p>
+                Three.js renders one validated world on a reusable canvas while
+                the damped camera orbits it. KaTeX emits HTML and MathML. Both
+                libraries and STIX Two Text are bundled into the static GitHub
+                Pages build.
+              </p>
+            </article>
+            <article>
+              <span>06</span>
+              <h3>Numerical and browser tests</h3>
+              <p>
+                Native tests validate topology, operators, routes, and
+                deterministic export. Relative residuals are normalized checks
+                of how closely each sparse system satisfies its equation.
+                Browser tests cover journey state, camera input, accessibility,
+                responsive layouts, and fallback behavior.
+              </p>
+            </article>
+          </div>
 
-    <footer>
-      <p>
-        Designed and implemented by
-        <a href="https://mihirrao-10.github.io/">Mihir Rao</a>.
-      </p>
-      <a href="#arrival">Back to the world ↑</a>
-    </footer>
+          <div class="implementation-notes">
+            <div>
+              <p>Exported primary solve</p>
+              <dl id="residual-list">
+                <div>
+                  <dt>Mesh</dt>
+                  <dd>Loading exported metadata</dd>
+                </div>
+                <div>
+                  <dt>Heat residual</dt>
+                  <dd>Loading exported metadata</dd>
+                </div>
+                <div>
+                  <dt>Poisson residual</dt>
+                  <dd>Loading exported metadata</dd>
+                </div>
+                <div>
+                  <dt>Encoding</dt>
+                  <dd>Binary schema v3 with C++ paths and six heat frames</dd>
+                </div>
+              </dl>
+            </div>
+            <div>
+              <p>Limitations</p>
+              <p>
+                The mesh discretizes a smooth surface, the Heat Method is
+                approximate, and cotangent accuracy depends on triangle quality.
+                Dijkstra is edge-restricted. Face tracing can fail near critical
+                regions, although every published preset reaches the source
+                without fallback. Distinct homotopy classes can have nearly
+                equal lengths. Computation is CPU-only.
+              </p>
+            </div>
+          </div>
+
+          <div class="references">
+            <h3>Primary references</h3>
+            <ol>
+              <li>
+                Keenan Crane, Clarisse Weischedel, and Max Wardetzky.
+                <a
+                  href="https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf"
+                  >“Geodesics in Heat: A New Approach to Computing Distance
+                  Based on Heat Flow.”</a
+                >
+                ACM Transactions on Graphics 32(5), 2013.
+              </li>
+              <li>
+                Keenan Crane.
+                <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/"
+                  >Discrete Differential Geometry course materials.</a
+                >
+                Carnegie Mellon University.
+              </li>
+              <li>
+                <a
+                  href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
+                  >Source, tests, benchmark methodology, and interview guide.</a
+                >
+              </li>
+            </ol>
+          </div>
+
+          <div class="journey-replay">
+            <button id="replay-journey" class="replay-button" type="button">
+              Replay the journey <span aria-hidden="true">↺</span>
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer id="site-footer" hidden>
+        <p>
+          Designed and implemented by
+          <a href="https://mihirrao-10.github.io/">Mihir Rao</a>.
+        </p>
+        <a id="back-to-world" href="#arrival">Back to the world ↑</a>
+      </footer>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

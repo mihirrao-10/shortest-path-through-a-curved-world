@@ -194,7 +194,7 @@ The checked-in [data/benchmarks.cpu.json](data/benchmarks.cpu.json) is the canon
 
 Native tests cover all three genera: deterministic vertices and faces, finite positions and normals, positive face area, edge and vertex manifold structure, one component, no boundary, opposite shared-edge orientation, positive signed volume, exact Euler characteristic, recovered genus, triangle quality, operator invariants, Heat and Poisson convergence, source zero, native landmarks and routes, deterministic export, metadata agreement, and the complete manifest. Planar and sphere fixtures continue to test numerical machinery independently.
 
-Vitest covers manifest and payload parsing, derived topology, native path ranges, malformed data, lazy caching, and fetch recovery. Playwright covers initial Genus 2 loading, genus switching, route state, the reversible heat toggle, camera inputs, reduced motion, failure recovery, responsive layouts, and the absence of the removed header, progress rail, stage frame, and outline shell.
+Vitest covers manifest and payload parsing, derived topology, native path ranges, malformed data, lazy caching, fetch recovery, journey-state gates, replay, and camera input mapping. Playwright covers the locked opening, the complete guided journey, route commitment, one-way heat release, explicit route comparison, direct camera inputs, keyboard-only and reduced-motion use, WebGL and corrupt-data fallbacks, genus switching, accessibility checks, and responsive layouts from 1440-pixel desktop through 320-pixel mobile viewports.
 
 ## Foundations and project-specific work
 

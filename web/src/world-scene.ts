@@ -22,7 +22,7 @@ function actCaptions(genus: number): readonly string[] {
     `A closed genus-${genus} surface generated and solved by the C++ engine.`,
     "The ambient chord can cross the tube or empty space, so it cannot be walked.",
     "Dijkstra follows mesh edges and inherits their directional bias.",
-    "Choose a native-authored start at the outer ridge, central neck, or basin rim.",
+    "Choose the explorer's start: outer ridge, central neck, or basin rim.",
     "Six exported diffusion states spread over the surface from the amber beacon.",
     "Depth-tested face arrows and a lifted route follow the reconstructed field.",
     "Contours show level sets of one Heat Method distance field.",
@@ -38,6 +38,7 @@ interface SceneOptions {
   onExploreChange?: (engaged: boolean) => void;
   onCaptionChange?: (caption: string) => void;
   onHeatStateChange?: (state: "idle" | "animation" | "released") => void;
+  onHeatFrameChange?: (frame: number, frameCount: number) => void;
 }
 
 type RouteVisual = {
@@ -222,6 +223,7 @@ export class WorldScene {
   private readonly onRouteSelected?: (preset: RoutePreset) => void;
   private readonly onCaptionChange?: (caption: string) => void;
   private readonly onHeatStateChange?: SceneOptions["onHeatStateChange"];
+  private readonly onHeatFrameChange?: SceneOptions["onHeatFrameChange"];
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
   private readonly renderer: THREE.WebGLRenderer;
@@ -249,10 +251,12 @@ export class WorldScene {
   private readonly controls: OrbitController;
   private readonly palette = new Float32Array(256 * 3);
   private selectedRouteId: RoutePresetId;
+  private routeChosen = false;
   private comparisonVisible = false;
   private activeAct = 0;
   private heatEnabled = false;
   private heatStartTime = 0;
+  private lastHeatFrame = -1;
   private routeReplayStart = 0;
   private routeReplayRevision = 0;
   private actStartTime = performance.now();
@@ -274,6 +278,7 @@ export class WorldScene {
     this.onRouteSelected = options.onRouteSelected;
     this.onCaptionChange = options.onCaptionChange;
     this.onHeatStateChange = options.onHeatStateChange;
+    this.onHeatFrameChange = options.onHeatFrameChange;
     const firstRoute = metadata.routePresets[0];
     if (!firstRoute) throw new Error("World metadata has no route presets");
     this.selectedRouteId = firstRoute.id;
@@ -365,7 +370,9 @@ export class WorldScene {
     this.scene.add(innerFill);
 
     this.canvas.dataset.act = "0";
-    this.canvas.dataset.activeRoute = this.selectedRouteId;
+    this.canvas.dataset.activeRoute = "";
+    this.canvas.dataset.routeSelected = "false";
+    this.canvas.dataset.routeLocked = "false";
     this.canvas.dataset.comparison = "false";
     this.canvas.dataset.heatMode = "idle";
     this.canvas.dataset.routeReplay = "0";
@@ -389,7 +396,7 @@ export class WorldScene {
     this.controls = new OrbitController(
       this.camera,
       this.canvas,
-      this.routePose(this.selectedRouteId),
+      this.openingPose(),
       {
         reducedMotion: this.reducedMotion,
         onExploreChange: options.onExploreChange,
@@ -419,6 +426,9 @@ export class WorldScene {
   get caption(): string {
     const captions = actCaptions(this.metadata.topology.genus);
     if (this.comparisonVisible) return captions[7]!;
+    if (this.activeAct === 3 && this.routeChosen) {
+      return `${this.selectedPreset.label} is selected. Its exported Heat Method path now connects this start to the beacon.`;
+    }
     return captions[this.activeAct] ?? captions[0]!;
   }
 
@@ -439,9 +449,9 @@ export class WorldScene {
   }
 
   resetView(): void {
-    this.canvas.dataset.focusTarget = "route";
-    this.controls.setPose(this.routePose(this.selectedRouteId), true);
-    this.onCaptionChange?.("The selected route and beacon are framed again.");
+    this.canvas.dataset.focusTarget = "chapter";
+    this.controls.setPose(this.chapterPose(this.activeAct), true);
+    this.onCaptionChange?.("The current mathematical view is framed again.");
   }
 
   focusBeacon(): void {
@@ -469,18 +479,34 @@ export class WorldScene {
     );
   }
 
-  selectRoute(routeId: RoutePresetId): void {
+  clearRouteSelection(): void {
+    this.routeChosen = false;
+    this.comparisonVisible = false;
+    this.canvas.dataset.activeRoute = "";
+    this.canvas.dataset.routeSelected = "false";
+    this.canvas.dataset.routeLocked = "false";
+    this.canvas.dataset.comparison = "false";
+    this.applyVisualState();
+  }
+
+  selectRoute(routeId: RoutePresetId, notify = true): void {
     const visual = this.routeVisuals.get(routeId);
     if (!visual) throw new Error(`Unknown route preset: ${routeId}`);
     this.selectedRouteId = routeId;
+    this.routeChosen = true;
     this.comparisonVisible = false;
     this.canvas.dataset.activeRoute = routeId;
+    this.canvas.dataset.routeSelected = "true";
     this.canvas.dataset.comparison = "false";
     this.positionExplorer();
     this.canvas.dataset.focusTarget = "route";
     this.controls.setPose(this.routePose(routeId), true);
     this.applyVisualState();
-    this.onRouteSelected?.(visual.preset);
+    if (notify) this.onRouteSelected?.(visual.preset);
+  }
+
+  setRouteLocked(locked: boolean): void {
+    this.canvas.dataset.routeLocked = String(locked);
   }
 
   showRouteComparison(frameView = true): void {
@@ -505,11 +531,14 @@ export class WorldScene {
   }
 
   resetJourney(): void {
+    this.controls.setExplore(false);
     this.setHeatEnabled(false);
     this.activeAct = 0;
     this.canvas.dataset.act = "0";
     this.applyColors(this.baseColors);
-    this.selectRoute(this.metadata.routePresets[0]!.id);
+    this.selectedRouteId = this.metadata.routePresets[0]!.id;
+    this.positionExplorer();
+    this.clearRouteSelection();
     this.resetView();
   }
 
@@ -519,9 +548,6 @@ export class WorldScene {
     this.activeAct = next;
     this.canvas.dataset.act = String(next);
     this.actStartTime = performance.now();
-    if (next === 7) this.showRouteComparison(false);
-    else if (this.comparisonVisible) this.hideRouteComparison();
-
     const wireMaterial = this.wireframe.material as THREE.MeshBasicMaterial;
     wireMaterial.opacity = next === 2 ? 0.22 : next === 8 ? 0.16 : 0;
     this.wireframe.visible = wireMaterial.opacity > 0;
@@ -541,6 +567,8 @@ export class WorldScene {
     if (!enabled) {
       this.canvas.dataset.heatMode = "idle";
       delete this.canvas.dataset.heatProgress;
+      delete this.canvas.dataset.heatFrame;
+      this.lastHeatFrame = -1;
       this.applyNonHeatColors();
       this.onHeatStateChange?.("idle");
       return;
@@ -549,22 +577,24 @@ export class WorldScene {
     this.activeAct = 4;
     this.canvas.dataset.act = "4";
     this.hideRouteComparison();
-    if (this.reducedMotion) {
-      this.applyHeat(1);
-      this.canvas.dataset.heatMode = "released";
-      this.onHeatStateChange?.("released");
-    } else {
-      this.canvas.dataset.heatMode = "animation";
-      this.canvas.dataset.heatProgress = "0";
-      this.applyHeat(0);
-      this.onHeatStateChange?.("animation");
-    }
+    this.canvas.dataset.heatMode = "animation";
+    this.canvas.dataset.heatProgress = "0";
+    this.applyHeat(0);
+    this.onHeatStateChange?.("animation");
     this.applyVisualState();
   }
 
-  toggleHeat(): boolean {
-    this.setHeatEnabled(!this.heatEnabled);
-    return this.heatEnabled;
+  releaseHeat(): boolean {
+    if (this.heatEnabled) return false;
+    this.setHeatEnabled(true);
+    return true;
+  }
+
+  restoreHeatCompletion(): void {
+    this.heatEnabled = true;
+    this.applyHeat(1);
+    this.canvas.dataset.heatMode = "released";
+    this.applyVisualState();
   }
 
   destroy(): void {
@@ -683,6 +713,15 @@ export class WorldScene {
     const first = Math.floor(scaled);
     const second = Math.min(first + 1, this.data.heatFrameCount - 1);
     const mix = scaled - first;
+    const visibleFrame = Math.min(
+      this.data.heatFrameCount - 1,
+      Math.round(scaled),
+    );
+    this.canvas.dataset.heatFrame = String(visibleFrame + 1);
+    if (visibleFrame !== this.lastHeatFrame) {
+      this.lastHeatFrame = visibleFrame;
+      this.onHeatFrameChange?.(visibleFrame + 1, this.data.heatFrameCount);
+    }
     const a = this.data.heatFrames[first]!;
     const b = this.data.heatFrames[second]!;
     for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
@@ -889,6 +928,17 @@ export class WorldScene {
     );
   }
 
+  private openingPose(): OrbitPose {
+    const target = this.worldCenter
+      .clone()
+      .add(new THREE.Vector3(0, this.worldRadius * 0.16, 0));
+    return this.poseFromDirection(
+      target,
+      new THREE.Vector3(0.12, 0.31, 1),
+      this.fitDistance(1.28),
+    );
+  }
+
   private fitDistance(margin: number): number {
     const aspect =
       this.canvas.clientWidth > 0 && this.canvas.clientHeight > 0
@@ -901,6 +951,7 @@ export class WorldScene {
   }
 
   private chapterPose(act: number): OrbitPose {
+    if (act === 0) return this.openingPose();
     if (act === 4) {
       const pose = this.routePose(this.selectedRouteId);
       pose.target.lerp(this.sourcePoint, 0.18);
@@ -950,6 +1001,8 @@ export class WorldScene {
   }
 
   private applyVisualState(): void {
+    this.explorer.visible = this.routeChosen;
+    this.canvas.dataset.visibleHeatPaths = "0";
     for (const [id, visual] of this.routeVisuals) {
       visual.ambientLine.removeFromParent();
       visual.dijkstraLine.removeFromParent();
@@ -968,18 +1021,23 @@ export class WorldScene {
         visual.heatPath.renderOrder = 3;
         this.world.add(visual.heatPath);
       }
+      this.canvas.dataset.visibleHeatPaths = String(this.routeVisuals.size);
       return;
     }
     const active = this.routeVisuals.get(this.selectedRouteId)!;
-    if (this.activeAct === 1) this.world.add(active.ambientLine);
+    if (this.activeAct === 1) {
+      this.world.add(active.ambientLine);
+      this.world.add(active.heatPath);
+    }
     if (this.activeAct === 2) {
       active.dijkstraLine.geometry.setDrawRange(0, 1);
       this.world.add(active.dijkstraLine);
     }
-    if (this.activeAct >= 3 && this.activeAct !== 4)
+    if (this.routeChosen && this.activeAct >= 3 && this.activeAct !== 4)
       this.world.add(active.heatPath);
-    if (this.activeAct === 4 && this.heatEnabled)
+    if (this.routeChosen && this.activeAct === 4 && this.heatEnabled)
       this.world.add(active.heatPath);
+    if (active.heatPath.parent) this.canvas.dataset.visibleHeatPaths = "1";
   }
 
   private resize(): void {
@@ -1038,7 +1096,7 @@ export class WorldScene {
       this.heatEnabled &&
       this.canvas.dataset.heatMode === "animation"
     ) {
-      const duration = 4200;
+      const duration = this.reducedMotion ? 180 : 4200;
       const progress = Math.min(1, (time - this.heatStartTime) / duration);
       this.applyHeat(progress);
       if (progress >= 1) {

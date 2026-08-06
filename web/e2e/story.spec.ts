@@ -9,6 +9,42 @@ function monitorErrors(page: Page): string[] {
   return errors;
 }
 
+async function numericAttribute(
+  locator: Locator,
+  name: string,
+): Promise<number> {
+  return Number(await locator.getAttribute(name));
+}
+
+async function openReady(page: Page, path = "./"): Promise<void> {
+  await page.goto(path, { waitUntil: "networkidle" });
+  await expect(page.locator("#start-button")).toBeEnabled();
+  await expect(page.locator("#startup-status")).toBeHidden();
+}
+
+async function begin(page: Page): Promise<void> {
+  await page.locator("#start-button").click();
+  await expect(page.locator("#journey-shell")).toBeVisible();
+  await expect(page.locator("#opening-screen")).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute("data-started", "true");
+  await expect(page.locator("#arrival")).toBeVisible();
+}
+
+async function proceed(page: Page, act: number): Promise<void> {
+  const button = page.locator(`[data-proceed-act="${act}"]`);
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-active-act",
+    String(act + 1),
+  );
+  await expect(page.locator(`.chapter[data-act="${act + 1}"]`)).toBeVisible();
+}
+
+async function unlockRouteChoice(page: Page): Promise<void> {
+  for (const act of [0, 1, 2]) await proceed(page, act);
+}
+
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(
     await page.evaluate(
@@ -21,7 +57,7 @@ async function expectBlackSurface(page: Page, selector: string): Promise<void> {
   const color = await page
     .locator(selector)
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(color).toMatch(/^rgb\(0, 0, 0\)$/);
+  expect(color).toBe("rgb(0, 0, 0)");
 }
 
 async function expectNoEmDash(page: Page): Promise<void> {
@@ -33,8 +69,9 @@ async function expectNoEmDash(page: Page): Promise<void> {
     );
     let node = walker.nextNode();
     while (node) {
-      if (node.textContent?.includes("\u2014"))
+      if (node.textContent?.includes("\u2014")) {
         values.push(node.textContent.trim());
+      }
       node = walker.nextNode();
     }
     document
@@ -50,79 +87,143 @@ async function expectNoEmDash(page: Page): Promise<void> {
   expect(violations).toEqual([]);
 }
 
-async function expectMonochromeText(page: Page): Promise<void> {
-  const coloredText = await page.evaluate(() =>
-    [...document.body.querySelectorAll<HTMLElement>("*")]
-      .filter((element) => {
-        const rectangle = element.getBoundingClientRect();
-        const hasDirectText = [...element.childNodes].some(
-          (node) =>
-            node.nodeType === Node.TEXT_NODE &&
-            Boolean(node.textContent?.trim()),
-        );
-        return (
-          hasDirectText &&
-          rectangle.width > 0 &&
-          rectangle.height > 0 &&
-          getComputedStyle(element).visibility !== "hidden"
-        );
-      })
-      .flatMap((element) => {
-        const match = getComputedStyle(element).color.match(
-          /^rgba?\((\d+),\s*(\d+),\s*(\d+)/,
-        );
-        if (!match) return [];
-        const channels = match.slice(1, 4).map(Number);
-        return Math.max(...channels) - Math.min(...channels) > 0
-          ? [
-              {
-                tag: element.tagName,
-                id: element.id,
-                className: element.className,
-                color: getComputedStyle(element).color,
-              },
-            ]
-          : [];
-      }),
-  );
-  expect(coloredText).toEqual([]);
-}
-
-async function numericAttribute(
-  locator: Locator,
-  name: string,
-): Promise<number> {
-  return Number(await locator.getAttribute(name));
-}
-
-async function selectGenus(page: Page, genus: 1 | 2 | 3): Promise<void> {
-  const button = page.locator(`button[data-genus="${genus}"]`);
-  await button.click();
-  await expect(page.locator("#loading")).toBeHidden();
-  await expect(button).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-topology",
-    `genus-${genus}`,
+async function dispatchPointerDrag(
+  canvas: Locator,
+  deltaX: number,
+  deltaY: number,
+): Promise<void> {
+  await canvas.evaluate(
+    (element, delta) => {
+      const rectangle = element.getBoundingClientRect();
+      const startX = rectangle.left + rectangle.width * 0.45;
+      const startY = rectangle.top + rectangle.height * 0.45;
+      const common = {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 41,
+        pointerType: "mouse",
+        button: 0,
+      };
+      element.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          ...common,
+          buttons: 1,
+          clientX: startX,
+          clientY: startY,
+        }),
+      );
+      element.dispatchEvent(
+        new PointerEvent("pointermove", {
+          ...common,
+          buttons: 1,
+          clientX: startX + delta.x,
+          clientY: startY + delta.y,
+        }),
+      );
+      element.dispatchEvent(
+        new PointerEvent("pointerup", {
+          ...common,
+          buttons: 0,
+          clientX: startX + delta.x,
+          clientY: startY + delta.y,
+        }),
+      );
+    },
+    { x: deltaX, y: deltaY },
   );
 }
 
-test("Genus 2 opens cleanly in the minimal layout at every viewport", async ({
+async function dispatchPinch(
+  canvas: Locator,
+  startDistance: number,
+  endDistance: number,
+): Promise<void> {
+  await canvas.evaluate(
+    (element, distances) => {
+      const rectangle = element.getBoundingClientRect();
+      const centerX = rectangle.left + rectangle.width * 0.5;
+      const centerY = rectangle.top + rectangle.height * 0.5;
+      const event = (
+        name: string,
+        pointerId: number,
+        x: number,
+        buttons: number,
+      ) =>
+        element.dispatchEvent(
+          new PointerEvent(name, {
+            bubbles: true,
+            cancelable: true,
+            pointerId,
+            pointerType: "touch",
+            button: 0,
+            buttons,
+            clientX: x,
+            clientY: centerY,
+          }),
+        );
+      event("pointerdown", 51, centerX - distances.start / 2, 1);
+      event("pointerdown", 52, centerX + distances.start / 2, 1);
+      event("pointermove", 52, centerX + distances.end / 2, 1);
+      event("pointermove", 51, centerX - distances.end / 2, 1);
+      event("pointerup", 51, centerX - distances.end / 2, 0);
+      event("pointerup", 52, centerX + distances.end / 2, 0);
+    },
+    { start: startDistance, end: endDistance },
+  );
+}
+
+test("a fresh visit is a true locked opening at every viewport", async ({
   page,
 }) => {
   const errors = monitorErrors(page);
-  await page.goto("./", { waitUntil: "networkidle" });
-  await expect(page.locator("#loading")).toBeHidden();
+  await openReady(page, "./#under-the-hood");
+
+  await expect(page.locator("#opening-screen")).toBeVisible();
+  await expect(page.locator("#journey-shell")).toBeHidden();
+  await expect(page.locator("#world-canvas")).toBeHidden();
   await expect(
     page.getByRole("heading", {
       level: 1,
       name: "The Shortest Path Through a Curved World",
     }),
-  ).toBeVisible();
-  await expect(page.locator(".site-header")).toHaveCount(0);
-  await expect(page.locator(".progress-rail")).toHaveCount(0);
-  await expect(
-    page.locator(".stage-hint, .source-key, .stage-vignette"),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(page.locator("body > *:visible")).toHaveCount(1);
+  await expect(page.locator("#start-button")).toBeFocused();
+  expect(new URL(page.url()).hash).toBe("");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight),
+  ).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight + 1));
+
+  await page.keyboard.press("End");
+  await page.keyboard.press("PageDown");
+  await page.mouse.wheel(0, 800);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-max-unlocked-act",
+    "0",
+  );
+  await expectBlackSurface(page, "html");
+  await expectBlackSurface(page, "body");
+  await expectBlackSurface(page, "#opening-screen");
+  await expectNoHorizontalOverflow(page);
+  await expectNoEmDash(page);
+  expect(errors).toEqual([]);
+});
+
+test("the complete guided journey unlocks one chapter at a time", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Run the complete animated journey once on desktop.",
+  );
+  const errors = monitorErrors(page);
+  await openReady(page);
+  const openingTitleSize = await page
+    .locator("#opening-screen-title")
+    .evaluate((element) => getComputedStyle(element).fontSize);
+  await begin(page);
 
   const canvas = page.locator("#world-canvas");
   await expect(canvas).toBeVisible();
@@ -131,356 +232,267 @@ test("Genus 2 opens cleanly in the minimal layout at every viewport", async ({
     "implicit-thickened-loop-graph",
   );
   await expect(canvas).toHaveAttribute("data-topology", "genus-2");
-  await expect(canvas).toHaveAttribute("data-euler-characteristic", "-2");
   await expect(canvas).toHaveAttribute("data-native-routes", "true");
-  await expect(canvas).toHaveAttribute("data-atmosphere", "false");
-  await expect(canvas).toHaveAttribute("data-active-scenes", "1");
   await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
-  await expect(canvas).toHaveAttribute(
-    "aria-describedby",
-    "world-instructions scene-caption",
+  await expect(page.locator("#arrival [data-math] .katex")).toHaveCount(1);
+  await expect(page.locator(".stage-header .view-controls button")).toHaveCount(
+    4,
   );
+  await expect(page.locator(".stage-footer button[data-genus]")).toHaveCount(3);
+  await expect(page.locator("#compare-routes")).toBeHidden();
+  await expect(page.locator("#world-instructions")).toHaveClass(/sr-only/);
   expect(
-    Number(await canvas.getAttribute("data-vertex-count")),
-  ).toBeGreaterThan(5_000);
-  expect(Number(await canvas.getAttribute("data-face-count"))).toBeGreaterThan(
-    10_000,
-  );
-  expect(
-    await numericAttribute(canvas, "data-camera-distance"),
-  ).toBeGreaterThan(5);
+    await page.locator("#world-instructions").evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+      clipped: getComputedStyle(element).clipPath,
+    })),
+  ).toEqual({ width: 1, height: 1, clipped: "inset(50%)" });
+  await expect(
+    page.locator(".stage-hint, .source-key, .stage-vignette"),
+  ).toHaveCount(0);
 
-  await expect(page.locator("button[data-genus]")).toHaveCount(3);
-  await expect(page.locator('button[data-genus="2"]')).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.locator(".stage-controls button")).toHaveCount(7);
-  await expect(page.locator("button[data-route-id]")).toHaveCount(3);
-  await expect(page.locator("#release-button")).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-
-  const stageLayout = await page.evaluate(() => {
+  const initialLayout = await page.evaluate(() => {
+    const stage = document
+      .querySelector("#world-stage")!
+      .getBoundingClientRect();
+    const title = document
+      .querySelector("#arrival-title")!
+      .getBoundingClientRect();
+    const header = document
+      .querySelector(".stage-header")!
+      .getBoundingClientRect();
     const canvas = document
       .querySelector("#world-canvas")!
       .getBoundingClientRect();
-    const controls = document
-      .querySelector(".stage-controls")!
+    const footer = document
+      .querySelector(".stage-footer")!
       .getBoundingClientRect();
-    const stageStyle = getComputedStyle(
-      document.querySelector("#world-stage")!,
-    );
     return {
+      stageRight: stage.right,
+      titleLeft: title.left,
+      headerBottom: header.bottom,
+      canvasTop: canvas.top,
       canvasBottom: canvas.bottom,
-      controlsTop: controls.top,
-      borderTop: stageStyle.borderTopWidth,
-      shadow: stageStyle.boxShadow,
-      bodyFontSize: Number.parseFloat(getComputedStyle(document.body).fontSize),
+      footerTop: footer.top,
     };
   });
-  expect(stageLayout.controlsTop).toBeGreaterThanOrEqual(
-    stageLayout.canvasBottom,
+  expect(initialLayout.stageRight).toBeLessThan(initialLayout.titleLeft);
+  expect(initialLayout.headerBottom).toBeLessThanOrEqual(
+    initialLayout.canvasTop + 1,
   );
-  expect(stageLayout.borderTop).toBe("0px");
-  expect(stageLayout.shadow).toBe("none");
-  expect(stageLayout.bodyFontSize).toBeGreaterThanOrEqual(15);
+  expect(initialLayout.footerTop).toBeGreaterThan(initialLayout.canvasBottom);
+  expect(
+    await page
+      .locator("#arrival-title")
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe(openingTitleSize);
 
-  await expectBlackSurface(page, "html");
-  await expectBlackSurface(page, "body");
-  await expectBlackSurface(page, "#world-stage");
-  await expectBlackSurface(page, ".canvas-frame");
-  await expectNoHorizontalOverflow(page);
-  await expectNoEmDash(page);
-  await expectMonochromeText(page);
+  await page.keyboard.press("End");
+  await page.keyboard.press("PageDown");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-max-unlocked-act",
+    "0",
+  );
+  await expect(page.locator("#straight-line")).toBeHidden();
 
-  const overlappingControls = await page
-    .locator(".stage-controls button")
-    .evaluateAll((buttons) => {
-      const rectangles = buttons.map((button) =>
-        button.getBoundingClientRect(),
+  await proceed(page, 0);
+  await expect(page.locator("#arrival")).toBeVisible();
+  await expect(page.locator("#straight-line")).toBeVisible();
+  await expect(page.locator("#triangles")).toBeHidden();
+  await expect(canvas).toHaveAttribute("data-route-selected", "false");
+  await expect(canvas).toHaveAttribute("data-active-route", "");
+  await expect(canvas).toHaveAttribute("data-visible-heat-paths", "1");
+  expect(
+    await page
+      .locator("#straight-title")
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe(openingTitleSize);
+
+  await proceed(page, 1);
+  await proceed(page, 2);
+  await expect(page.locator("#route-proceed")).toBeDisabled();
+  await expect(canvas).toHaveAttribute("data-route-selected", "false");
+  await expect(
+    page.locator('button[data-route-id][aria-pressed="true"]'),
+  ).toHaveCount(0);
+  await expect(page.locator("#replay-route, #choose-route")).toHaveCount(0);
+
+  const measuredRoutes = new Set<string>();
+  for (const routeId of ["outer-ridge", "basin-rim", "central-neck"]) {
+    const routeButton = page.locator(`button[data-route-id="${routeId}"]`);
+    await routeButton.click();
+    await expect(routeButton).toHaveAttribute("aria-pressed", "true");
+    await expect(canvas).toHaveAttribute("data-active-route", routeId);
+    await expect(canvas).toHaveAttribute("data-visible-heat-paths", "1");
+    for (const metric of [
+      "#ambient-length",
+      "#dijkstra-length",
+      "#heat-length",
+    ]) {
+      await expect(page.locator(metric)).toHaveText(
+        /^\d+\.\d{3} surface units$/,
       );
-      for (let first = 0; first < rectangles.length; first += 1) {
-        for (let second = first + 1; second < rectangles.length; second += 1) {
-          const a = rectangles[first]!;
-          const b = rectangles[second]!;
-          if (
-            Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
-            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
-          ) {
-            return true;
-          }
-        }
-      }
-      return false;
-    });
-  expect(overlappingControls).toBe(false);
-  expect(errors).toEqual([]);
-});
-
-test("genus selection is lazy, cached, scroll-stable, and metadata-driven", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-1280",
-    "Exercise all native worlds once on desktop.",
-  );
-  const errors = monitorErrors(page);
-  const binaryRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().endsWith("world.bin")) binaryRequests.push(request.url());
-  });
-  await page.goto("./#route-choice", { waitUntil: "networkidle" });
-  const canvas = page.locator("#world-canvas");
-  const initialScroll = await page.evaluate(() => window.scrollY);
-  const payloads = new Map<number, string>();
-  const sceneGenerations = new Set<number>();
-
-  for (const genus of [2, 1, 3] as const) {
-    if (genus !== 2) await selectGenus(page, genus);
-    payloads.set(
-      genus,
-      `${await canvas.getAttribute("data-vertex-count")}/${await canvas.getAttribute("data-face-count")}`,
-    );
-    await expect(canvas).toHaveAttribute(
-      "data-euler-characteristic",
-      String(2 - 2 * genus),
-    );
-    await expect(canvas).toHaveAttribute("data-active-scenes", "1");
-    sceneGenerations.add(
-      Number(await canvas.getAttribute("data-scene-generation")),
-    );
-    await expect(page.locator("button[data-route-id]")).toHaveCount(3);
-    await expect(canvas).toHaveAttribute("data-active-route", "outer-ridge");
-    await expect(page.locator("#ambient-length")).toContainText(
-      "surface units",
-    );
-    expect(
-      Math.abs((await page.evaluate(() => window.scrollY)) - initialScroll),
-    ).toBeLessThan(4);
-  }
-  expect(new Set(payloads.values()).size).toBe(3);
-
-  await selectGenus(page, 2);
-  await expect(canvas).toHaveAttribute("data-load-source", "cache");
-  await expect(canvas).toHaveAttribute("data-active-scenes", "1");
-  sceneGenerations.add(
-    Number(await canvas.getAttribute("data-scene-generation")),
-  );
-  expect(sceneGenerations.size).toBe(4);
-  const genusTwoRequests = binaryRequests.filter((url) =>
-    url.includes("genus-2/world.bin"),
-  );
-  expect(genusTwoRequests).toHaveLength(1);
-  expect(binaryRequests).toHaveLength(3);
-
-  const beforeOrbit = await numericAttribute(
-    canvas,
-    "data-camera-goal-azimuth",
-  );
-  await canvas.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect
-    .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
-    .not.toBe(beforeOrbit);
-  expect(errors).toEqual([]);
-});
-
-test("all routes on every genus use red, green, and neutral native geometry", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-1440",
-    "Exercise route selection and comparison once.",
-  );
-  const errors = monitorErrors(page);
-  await page.goto("./#route-choice", { waitUntil: "networkidle" });
-  const canvas = page.locator("#world-canvas");
-  await expect(canvas).toHaveAttribute("data-ambient-color", "#ff3030");
-  await expect(canvas).toHaveAttribute("data-heat-path-color", "#39ff88");
-  await expect(canvas).toHaveAttribute("data-dijkstra-color", "#f1f1f1");
-
-  for (const genus of [1, 2, 3] as const) {
-    if (genus !== 2) await selectGenus(page, genus);
-    const routeButtons = page.locator("button[data-route-id]");
-    await expect(routeButtons).toHaveCount(3);
-    const measurements = new Set<string>();
-    for (let index = 0; index < 3; index += 1) {
-      const button = routeButtons.nth(index);
-      await button.click();
-      await expect(button).toHaveAttribute("aria-pressed", "true");
-      const routeId = await button.getAttribute("data-route-id");
-      await expect(canvas).toHaveAttribute("data-active-route", routeId!);
-      for (const metric of [
-        "#ambient-length",
-        "#dijkstra-length",
-        "#heat-length",
-      ]) {
-        await expect(page.locator(metric)).toHaveText(
-          /^\d+\.\d{3} surface units$/,
-        );
-      }
-      measurements.add(
-        (await page.locator("#heat-length").textContent()) ?? "",
-      );
-      const beforeReplay = Number(
-        (await canvas.getAttribute("data-route-replay")) ?? 0,
-      );
-      await page.locator("#replay-route").click();
-      await expect
-        .poll(async () =>
-          Number(await canvas.getAttribute("data-route-replay")),
-        )
-        .toBeGreaterThan(beforeReplay);
     }
-    expect(measurements.size).toBe(3);
-    await page.locator("#compare-routes").click();
-    await expect(canvas).toHaveAttribute("data-comparison", "true");
-    await expect(page.locator("#comparison-table-body tr")).toHaveCount(3);
-    await expect(
-      page.locator("#comparison-legend [data-route-id]"),
-    ).toHaveCount(3);
+    measuredRoutes.add(
+      [
+        await page.locator("#ambient-length").textContent(),
+        await page.locator("#dijkstra-length").textContent(),
+        await page.locator("#heat-length").textContent(),
+      ].join("/"),
+    );
   }
-  await expectNoHorizontalOverflow(page);
-  expect(errors).toEqual([]);
-});
+  expect(measuredRoutes.size).toBe(3);
+  await expect(page.locator("#route-proceed")).toBeEnabled();
 
-test("heat is reversible, replayable, and reset by switching or replaying", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-1280",
-    "Exercise the full heat lifecycle once.",
+  await proceed(page, 3);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-route-locked",
+    "true",
   );
-  const errors = monitorErrors(page);
-  await page.goto("./#release-heat", { waitUntil: "networkidle" });
-  const canvas = page.locator("#world-canvas");
-  const button = page.locator("#release-button");
-  await expect(button).toHaveText("Release heat");
-  await expect(button).toHaveAttribute("aria-pressed", "false");
-  await button.click();
-  await expect(button).toHaveText("Remove heat");
-  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.locator('button[data-route-id="central-neck"]'),
+  ).toHaveAttribute("aria-current", "step");
+  expect(
+    await page
+      .locator("button[data-route-id]")
+      .evaluateAll((buttons) =>
+        buttons.every((button) => (button as HTMLButtonElement).disabled),
+      ),
+  ).toBe(true);
+  await page
+    .locator('button[data-route-id="basin-rim"]')
+    .evaluate((element: HTMLButtonElement) => element.click());
+  await expect(canvas).toHaveAttribute("data-active-route", "central-neck");
+  await expect(page.locator("#compare-routes")).toBeHidden();
+
+  await expect(page.locator("#heat-proceed")).toBeDisabled();
+  await canvas.evaluate((element) => {
+    const frames: string[] = [];
+    (window as Window & { __heatFrames?: string[] }).__heatFrames = frames;
+    new MutationObserver(() => {
+      const frame = (element as HTMLElement).dataset.heatFrame;
+      if (frame && !frames.includes(frame)) frames.push(frame);
+    }).observe(element, {
+      attributes: true,
+      attributeFilter: ["data-heat-frame"],
+    });
+  });
+  await page.locator("#release-button").click();
   await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
-  await expect
-    .poll(() => numericAttribute(canvas, "data-heat-progress"))
-    .toBeGreaterThan(0.05);
   await expect(canvas).toHaveAttribute("data-heat-mode", "released", {
     timeout: 7_000,
   });
   await expect(canvas).toHaveAttribute("data-heat-progress", "1.000");
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __heatFrames?: string[] }).__heatFrames,
+    ),
+  ).toEqual(["1", "2", "3", "4", "5", "6"]);
+  await expect(page.locator("#release-button")).toBeDisabled();
+  await expect(page.locator("#release-button")).toHaveText("Heat released");
+  await expect(page.locator("#heat-proceed")).toBeEnabled();
 
-  await button.click();
-  await expect(button).toHaveText("Release heat");
-  await expect(button).toHaveAttribute("aria-pressed", "false");
-  await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
-  await expect(canvas).not.toHaveAttribute("data-heat-progress", /.+/);
-  await button.click();
-  await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
-  await selectGenus(page, 1);
-  await expect(button).toHaveAttribute("aria-pressed", "false");
-  await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
+  await proceed(page, 4);
+  await proceed(page, 5);
+  await expect(page.locator("#math-title")).toBeInViewport();
+  await expect(page.locator("#compare-routes")).toBeHidden();
+  await proceed(page, 6);
+  await expect(page.locator("#compare-routes")).toBeVisible();
+  await expect(page.locator("#compare-routes")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await page.locator("#compare-routes").click();
+  await expect(page.locator("#compare-routes")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(canvas).toHaveAttribute("data-comparison", "true");
+  await expect(canvas).toHaveAttribute("data-visible-heat-paths", "3");
+  await expect(page.locator("#comparison-panel")).toBeVisible();
+  await expect(page.locator("#comparison-table-body tr")).toHaveCount(3);
+  await expect(page.locator("#comparison-legend [data-route-id]")).toHaveCount(
+    3,
+  );
+  await page.locator("#compare-routes").click();
+  await expect(canvas).toHaveAttribute("data-comparison", "false");
+  await expect(canvas).toHaveAttribute("data-visible-heat-paths", "1");
+  await expect(canvas).toHaveAttribute("data-active-route", "central-neck");
+  await expect(page.locator("#comparison-panel")).toBeHidden();
 
-  await button.click();
-  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await proceed(page, 7);
+  await expect(page.locator("#benchmark-chart svg")).toBeVisible();
+  await expect(page.locator("#benchmark-caption")).toContainText("CPU");
+  await proceed(page, 8);
+  await proceed(page, 9);
+  await expect(page.locator("#under-the-hood")).toBeVisible();
+  await expect(page.locator("#under-title")).toBeInViewport();
+  await expect(page.locator("#site-footer")).toBeVisible();
+  await expect(page.locator("#replay-journey")).toBeVisible();
+  await expectNoEmDash(page);
+
   await page.locator("#replay-journey").click();
-  await expect(button).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#opening-screen")).toBeVisible();
+  await expect(page.locator("#journey-shell")).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute("data-started", "false");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-max-unlocked-act",
+    "0",
+  );
+  await expect(canvas).toHaveAttribute("data-route-selected", "false");
+  await expect(canvas).toHaveAttribute("data-route-locked", "false");
   await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
+  await expect(canvas).toHaveAttribute("data-comparison", "false");
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(new URL(page.url()).hash).toBe("");
   expect(errors).toEqual([]);
 });
 
-test("mouse, synthetic pointer, keyboard, trackpad, focus, and scrolling cooperate", async ({
+test("camera input follows the explicit direct-manipulation contract", async ({
   page,
 }, testInfo) => {
   test.skip(
-    testInfo.project.name !== "desktop-1440",
-    "Exercise camera controls once on desktop.",
+    testInfo.project.name !== "desktop-1280",
+    "Exercise controller state once on desktop.",
   );
   const errors = monitorErrors(page);
-  await page.goto("./", { waitUntil: "networkidle" });
+  await openReady(page);
+  await begin(page);
   const canvas = page.locator("#world-canvas");
-  const bounds = await canvas.boundingBox();
-  expect(bounds).not.toBeNull();
-  const box = bounds!;
 
-  const mouseStart = await numericAttribute(canvas, "data-camera-azimuth");
-  await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.48);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.68, box.y + box.height * 0.38, {
-    steps: 5,
-  });
-  await page.mouse.up();
+  let azimuth = await numericAttribute(canvas, "data-camera-goal-azimuth");
+  let elevation = await numericAttribute(canvas, "data-camera-goal-elevation");
+  await dispatchPointerDrag(canvas, 60, 55);
   await expect
-    .poll(() => numericAttribute(canvas, "data-camera-azimuth"))
-    .not.toBe(mouseStart);
-  await expect(canvas).toHaveAttribute("data-focus-target", "manual");
-
-  const syntheticStart = await numericAttribute(
-    canvas,
-    "data-camera-goal-elevation",
-  );
-  await canvas.evaluate((element) => {
-    const rectangle = element.getBoundingClientRect();
-    const common = {
-      bubbles: true,
-      cancelable: true,
-      pointerId: 41,
-      pointerType: "mouse",
-      button: 0,
-    };
-    element.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        ...common,
-        buttons: 1,
-        clientX: rectangle.left + rectangle.width * 0.45,
-        clientY: rectangle.top + rectangle.height * 0.45,
-      }),
-    );
-    element.dispatchEvent(
-      new PointerEvent("pointermove", {
-        ...common,
-        buttons: 1,
-        clientX: rectangle.left + rectangle.width * 0.5,
-        clientY: rectangle.top + rectangle.height * 0.62,
-      }),
-    );
-    element.dispatchEvent(
-      new PointerEvent("pointerup", {
-        ...common,
-        buttons: 0,
-        clientX: rectangle.left + rectangle.width * 0.5,
-        clientY: rectangle.top + rectangle.height * 0.62,
-      }),
-    );
-  });
+    .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
+    .toBeLessThan(azimuth);
   await expect
     .poll(() => numericAttribute(canvas, "data-camera-goal-elevation"))
-    .not.toBe(syntheticStart);
+    .toBeGreaterThan(elevation);
 
-  await canvas.focus();
-  const keyboardDistance = await numericAttribute(
-    canvas,
-    "data-camera-goal-distance",
-  );
-  await page.keyboard.press("+");
+  let distance = await numericAttribute(canvas, "data-camera-goal-distance");
+  await dispatchPinch(canvas, 90, 150);
   await expect
     .poll(() => numericAttribute(canvas, "data-camera-goal-distance"))
-    .toBeLessThan(keyboardDistance);
+    .toBeLessThan(distance);
+  distance = await numericAttribute(canvas, "data-camera-goal-distance");
+  await dispatchPinch(canvas, 150, 80);
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-distance"))
+    .toBeGreaterThan(distance);
 
   await page.locator("#explore-view").click();
   await expect(canvas).toHaveAttribute("data-explore-view", "true");
-  const trackpadAzimuth = await numericAttribute(
-    canvas,
-    "data-camera-goal-azimuth",
-  );
+  azimuth = await numericAttribute(canvas, "data-camera-goal-azimuth");
+  elevation = await numericAttribute(canvas, "data-camera-goal-elevation");
   expect(
     await canvas.evaluate((element) => {
       const event = new WheelEvent("wheel", {
         bubbles: true,
         cancelable: true,
         deltaX: 70,
-        deltaY: 35,
+        deltaY: 45,
       });
       element.dispatchEvent(event);
       return event.defaultPrevented;
@@ -488,13 +500,13 @@ test("mouse, synthetic pointer, keyboard, trackpad, focus, and scrolling coopera
   ).toBe(true);
   await expect
     .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
-    .not.toBe(trackpadAzimuth);
+    .toBeLessThan(azimuth);
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-elevation"))
+    .toBeGreaterThan(elevation);
 
-  const pinchDistance = await numericAttribute(
-    canvas,
-    "data-camera-goal-distance",
-  );
-  await canvas.evaluate((element) => {
+  distance = await numericAttribute(canvas, "data-camera-goal-distance");
+  await canvas.evaluate((element) =>
     element.dispatchEvent(
       new WheelEvent("wheel", {
         bubbles: true,
@@ -502,25 +514,27 @@ test("mouse, synthetic pointer, keyboard, trackpad, focus, and scrolling coopera
         ctrlKey: true,
         deltaY: -55,
       }),
-    );
-  });
+    ),
+  );
   await expect
     .poll(() => numericAttribute(canvas, "data-camera-goal-distance"))
-    .toBeLessThan(pinchDistance);
+    .toBeLessThan(distance);
+
+  await canvas.focus();
+  azimuth = await numericAttribute(canvas, "data-camera-goal-azimuth");
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-azimuth"))
+    .toBeLessThan(azimuth);
+  elevation = await numericAttribute(canvas, "data-camera-goal-elevation");
+  await page.keyboard.press("ArrowUp");
+  await expect
+    .poll(() => numericAttribute(canvas, "data-camera-goal-elevation"))
+    .toBeLessThan(elevation);
   await page.keyboard.press("Escape");
   await expect(canvas).toHaveAttribute("data-explore-view", "false");
 
-  await page.locator("#reset-view").click();
-  await expect(canvas).toHaveAttribute("data-focus-target", "route");
-  await page.locator("#focus-beacon").click();
-  await expect(canvas).toHaveAttribute("data-focus-target", "beacon");
-  await page.locator("#focus-route-start").click();
-  await expect(canvas).toHaveAttribute("data-focus-target", "route-start");
-  await page.mouse.dblclick(box.x + 12, box.y + box.height * 0.55);
-  await expect(canvas).toHaveAttribute("data-focus-target", "route");
-
-  await page.evaluate(() => window.scrollTo(0, 0));
-  const beforeScroll = await page.evaluate(() => window.scrollY);
+  await proceed(page, 0);
   expect(
     await canvas.evaluate((element) => {
       const event = new WheelEvent("wheel", {
@@ -532,21 +546,72 @@ test("mouse, synthetic pointer, keyboard, trackpad, focus, and scrolling coopera
       return event.defaultPrevented;
     }),
   ).toBe(false);
-  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(200, 300);
   await page.mouse.wheel(0, 420);
   await expect
     .poll(() => page.evaluate(() => window.scrollY))
-    .toBeGreaterThan(beforeScroll);
+    .toBeGreaterThan(scrollBefore);
   expect(errors).toEqual([]);
 });
 
-test("reduced motion completes heat immediately and remains reversible", async ({
+test("genus switching preserves a compatible committed route without bypassing milestones", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1280",
+    "Exercise all exported worlds once.",
+  );
+  const errors = monitorErrors(page);
+  await openReady(page);
+  await begin(page);
+  await unlockRouteChoice(page);
+  await page.locator('button[data-route-id="basin-rim"]').click();
+  await proceed(page, 3);
+
+  const canvas = page.locator("#world-canvas");
+  const payloads = new Set<string>();
+  const measurements = new Set<string>();
+  for (const genus of [2, 1, 3] as const) {
+    const button = page.locator(`button[data-genus="${genus}"]`);
+    if (genus !== 2) await button.click();
+    await expect(page.locator("#loading")).toBeHidden();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(canvas).toHaveAttribute("data-topology", `genus-${genus}`);
+    await expect(canvas).toHaveAttribute(
+      "data-euler-characteristic",
+      String(2 - 2 * genus),
+    );
+    await expect(canvas).toHaveAttribute("data-active-route", "basin-rim");
+    await expect(canvas).toHaveAttribute("data-route-locked", "true");
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-max-unlocked-act",
+      "4",
+    );
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-heat-released",
+      "false",
+    );
+    payloads.add(
+      `${await canvas.getAttribute("data-vertex-count")}/${await canvas.getAttribute("data-face-count")}`,
+    );
+    measurements.add((await page.locator("#heat-length").textContent()) ?? "");
+    await expect(page.locator("#residual-list dd").first()).toContainText(
+      `Genus ${genus}`,
+    );
+  }
+  expect(payloads.size).toBe(3);
+  expect(measurements.size).toBe(3);
+  expect(errors).toEqual([]);
+});
+
+test("keyboard-only and reduced-motion users can complete and replay the journey", async ({
   browser,
   baseURL,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "mobile-390",
-    "Exercise reduced motion once.",
+    "Exercise the reduced-motion keyboard flow once.",
   );
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -555,28 +620,196 @@ test("reduced motion completes heat immediately and remains reversible", async (
   });
   const page = await context.newPage();
   const errors = monitorErrors(page);
-  await page.goto(`${baseURL}#release-heat`, { waitUntil: "networkidle" });
-  const canvas = page.locator("#world-canvas");
-  const button = page.locator("#release-button");
-  await expect(canvas).toHaveAttribute("data-auto-orbit", "false");
-  await button.click();
-  await expect(canvas).toHaveAttribute("data-heat-mode", "released");
-  await expect(canvas).toHaveAttribute("data-heat-progress", "1.000");
-  await expect(button).toHaveText("Remove heat");
-  await button.click();
-  await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
-  await expect(button).toHaveText("Release heat");
+  await page.goto(baseURL!, { waitUntil: "networkidle" });
+  await expect(page.locator("#start-button")).toBeEnabled();
+  await expect(page.locator("#start-button")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#arrival-title")).toBeFocused();
+
+  for (const act of [0, 1, 2]) {
+    const button = page.locator(`[data-proceed-act="${act}"]`);
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-active-act",
+      String(act + 1),
+    );
+  }
+  const route = page.locator('button[data-route-id="outer-ridge"]');
+  await route.focus();
+  await page.keyboard.press("Enter");
+  await expect(route).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#route-proceed").focus();
+  await page.keyboard.press("Enter");
+
+  await page.locator("#release-button").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-heat-released",
+    "true",
+    { timeout: 2_000 },
+  );
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-auto-orbit",
+    "false",
+  );
+
+  for (const act of [4, 5, 6, 7, 8, 9]) {
+    const button = page.locator(`[data-proceed-act="${act}"]`);
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-active-act",
+      String(act + 1),
+    );
+  }
+  await expect(page.locator("#under-title")).toBeFocused();
+  await page.locator("#replay-journey").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#opening-screen")).toBeVisible();
+  await expect(page.locator("#start-button")).toBeFocused();
   await expectNoHorizontalOverflow(page);
   expect(errors).toEqual([]);
   await context.close();
 });
 
-test("failed native data retains a dark readable fallback", async ({
+test("the WebGL fallback follows Start, route, heat, compare, and replay rules", async ({
   page,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "mobile-320",
-    "Exercise the narrow fallback once.",
+    "Exercise the complete fallback once.",
+  );
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      contextId: string,
+      options?: unknown,
+    ) {
+      if (contextId.startsWith("webgl")) return null;
+      return original.call(this, contextId as "2d", options as never);
+    } as typeof HTMLCanvasElement.prototype.getContext;
+  });
+  const errors = monitorErrors(page);
+  await openReady(page);
+  await expect(page.locator("#webgl-fallback")).toBeHidden();
+  await begin(page);
+  await expect(page.locator("body")).toHaveAttribute("data-webgl", "fallback");
+  await expect(page.locator("#world-canvas")).toBeHidden();
+  await expect(page.locator("#webgl-fallback")).toBeVisible();
+  await expectBlackSurface(page, "#webgl-fallback");
+
+  await unlockRouteChoice(page);
+  await page.locator('button[data-route-id="basin-rim"]').click();
+  await expect(page.locator("#webgl-fallback")).toHaveAttribute(
+    "data-route-selected",
+    "true",
+  );
+  await proceed(page, 3);
+  await expect(page.locator("#webgl-fallback")).toHaveAttribute(
+    "data-route-locked",
+    "true",
+  );
+  await page.locator("#release-button").click();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-heat-released",
+    "true",
+    { timeout: 5_000 },
+  );
+  await expect(page.locator("#webgl-fallback")).toHaveAttribute(
+    "data-heat-frame",
+    "6",
+  );
+  for (const act of [4, 5, 6]) await proceed(page, act);
+  await page.locator("#compare-routes").click();
+  await expect(page.locator("#webgl-fallback")).toHaveAttribute(
+    "data-comparison",
+    "true",
+  );
+  await expect(page.locator("#comparison-panel")).toBeVisible();
+  for (const act of [7, 8, 9]) await proceed(page, act);
+  await page.locator("#replay-journey").click();
+  await expect(page.locator("#opening-screen")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-started", "false");
+  await expectNoHorizontalOverflow(page);
+  expect(errors).toEqual([]);
+});
+
+test("stage, controls, title, and active copy do not overlap at supported sizes", async ({
+  page,
+}) => {
+  const errors = monitorErrors(page);
+  await openReady(page);
+  await begin(page);
+  await expectNoHorizontalOverflow(page);
+
+  const layout = await page.evaluate(() => {
+    const rect = (selector: string) =>
+      document.querySelector(selector)!.getBoundingClientRect().toJSON();
+    const controls = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".stage-header button:not([hidden]), .stage-footer button:not([hidden])",
+      ),
+    ].map((element) => element.getBoundingClientRect().toJSON());
+    const title = document.querySelector("#arrival-title")!;
+    return {
+      stage: rect("#world-stage"),
+      title: title.getBoundingClientRect().toJSON(),
+      titleScrollWidth: title.scrollWidth,
+      titleClientWidth: title.clientWidth,
+      canvas: rect("#world-canvas"),
+      header: rect(".stage-header"),
+      footer: rect(".stage-footer"),
+      controls,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  });
+  expect(layout.titleScrollWidth).toBeLessThanOrEqual(
+    layout.titleClientWidth + 1,
+  );
+  expect(layout.header.bottom).toBeLessThanOrEqual(layout.canvas.top + 1);
+  expect(layout.footer.top).toBeGreaterThan(layout.canvas.bottom);
+  expect(layout.stage.height).toBeLessThan(layout.viewport.height * 0.88);
+
+  for (let first = 0; first < layout.controls.length; first += 1) {
+    for (let second = first + 1; second < layout.controls.length; second += 1) {
+      const a = layout.controls[first]!;
+      const b = layout.controls[second]!;
+      const overlaps =
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+      expect(overlaps).toBe(false);
+    }
+  }
+
+  if (layout.viewport.width > 820) {
+    expect(layout.stage.right).toBeLessThan(layout.title.left);
+  } else {
+    expect(layout.stage.bottom).toBeLessThanOrEqual(layout.title.top + 1);
+    await proceed(page, 0);
+    await page.waitForTimeout(600);
+    const positions = await page.evaluate(() => ({
+      stageBottom: document
+        .querySelector("#world-stage")!
+        .getBoundingClientRect().bottom,
+      titleTop: document
+        .querySelector("#straight-title")!
+        .getBoundingClientRect().top,
+    }));
+    expect(positions.titleTop).toBeGreaterThanOrEqual(
+      positions.stageBottom - 1,
+    );
+  }
+  await expectNoEmDash(page);
+  expect(errors).toEqual([]);
+});
+
+test("corrupt native data still opens a dark written fallback", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-375",
+    "Exercise data failure recovery once.",
   );
   await page.route("**/data/worlds/genus-2/world.bin", (route) =>
     route.fulfill({
@@ -585,8 +818,12 @@ test("failed native data retains a dark readable fallback", async ({
       body: "unavailable",
     }),
   );
-  await page.goto("./", { waitUntil: "networkidle" });
+  await openReady(page);
+  await begin(page);
   await expect(page.locator("#webgl-fallback")).toBeVisible();
+  await expect(page.locator("#webgl-fallback")).toContainText(
+    "written explanation",
+  );
   await expectBlackSurface(page, "#webgl-fallback");
   await expectNoHorizontalOverflow(page);
 });

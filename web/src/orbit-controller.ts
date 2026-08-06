@@ -1,4 +1,12 @@
 import * as THREE from "three";
+import {
+  horizontalTrackpadOrbitDelta,
+  keyboardOrbitDelta,
+  pinchZoomScale,
+  pointerOrbitDelta,
+  trackpadOrbitDelta,
+  wheelPinchZoomScale,
+} from "./input-mapping";
 
 export interface OrbitPose {
   target: THREE.Vector3;
@@ -330,9 +338,10 @@ export class OrbitController {
       event.clientX - previous.x,
       event.clientY - previous.y,
     );
-    this.orbit(-deltaX * 0.006, -deltaY * 0.0052);
+    const orbit = pointerOrbitDelta(deltaX, deltaY);
+    this.orbit(orbit.azimuth, orbit.elevation);
     if (this.pointers.size >= 2 && previousDistance > 4 && nextDistance > 4) {
-      this.zoom(previousDistance / nextDistance);
+      this.zoom(pinchZoomScale(previousDistance, nextDistance));
     }
     event.preventDefault();
   };
@@ -369,9 +378,10 @@ export class OrbitController {
     if (this.exploreEngaged) {
       event.preventDefault();
       if (event.ctrlKey) {
-        this.zoom(Math.exp(event.deltaY * 0.004));
+        this.zoom(wheelPinchZoomScale(event.deltaY));
       } else {
-        this.orbit(-event.deltaX * 0.0034, -event.deltaY * 0.0031);
+        const orbit = trackpadOrbitDelta(event.deltaX, event.deltaY);
+        this.orbit(orbit.azimuth, orbit.elevation);
       }
       return;
     }
@@ -379,7 +389,8 @@ export class OrbitController {
       !event.ctrlKey &&
       Math.abs(event.deltaX) > Math.max(3, Math.abs(event.deltaY) * 1.35)
     ) {
-      this.orbit(-event.deltaX * 0.0024, 0);
+      const orbit = horizontalTrackpadOrbitDelta(event.deltaX);
+      this.orbit(orbit.azimuth, orbit.elevation);
     }
   };
 
@@ -404,11 +415,8 @@ export class OrbitController {
       this.onReset?.();
       return;
     }
-    const orbitStep = event.shiftKey ? 0.18 : 0.1;
-    if (key === "arrowleft") this.orbit(-orbitStep, 0);
-    else if (key === "arrowright") this.orbit(orbitStep, 0);
-    else if (key === "arrowup") this.orbit(0, orbitStep);
-    else if (key === "arrowdown") this.orbit(0, -orbitStep);
+    const orbit = keyboardOrbitDelta(event.key, event.shiftKey);
+    if (orbit) this.orbit(orbit.azimuth, orbit.elevation);
     else if (key === "+" || key === "=") this.zoom(0.88);
     else if (key === "-" || key === "_") this.zoom(1.14);
     else return;
@@ -441,7 +449,7 @@ export class OrbitController {
     event.preventDefault();
     const scale = Number((event as Event & { scale?: number }).scale ?? 1);
     if (scale > 0 && Number.isFinite(scale)) {
-      this.zoom(this.safariGestureScale / scale);
+      this.zoom(pinchZoomScale(this.safariGestureScale, scale));
       this.safariGestureScale = scale;
     }
   };

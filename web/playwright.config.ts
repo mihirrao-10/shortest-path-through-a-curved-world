@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const runningInCi = Boolean(process.env.CI);
+const deployedBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,16 +17,20 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:4173/shortest-path-through-a-curved-world/",
+    baseURL:
+      deployedBaseUrl ??
+      "http://127.0.0.1:4173/shortest-path-through-a-curved-world/",
     colorScheme: "dark",
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "npm run preview -- --port 4173",
-    port: 4173,
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: deployedBaseUrl
+    ? undefined
+    : {
+        command: "npm run preview -- --port 4173",
+        port: 4173,
+        reuseExistingServer: true,
+        timeout: 120_000,
+      },
   projects: [
     { name: "desktop-1440", use: { viewport: { width: 1440, height: 900 } } },
     { name: "desktop-1280", use: { viewport: { width: 1280, height: 800 } } },
