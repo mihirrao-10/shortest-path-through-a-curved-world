@@ -6,11 +6,12 @@ const baseUrl =
   "http://127.0.0.1:4173/shortest-path-through-a-curved-world/";
 const browser = await chromium.launch({ headless: true });
 
-async function readyPage(viewport) {
+async function readyPage(viewport, options = {}) {
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 1,
     colorScheme: "dark",
+    ...options,
   });
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: "networkidle" });
@@ -60,10 +61,26 @@ async function selectGenus(page, genus) {
   await page.locator("#loading").waitFor({ state: "hidden" });
 }
 
+async function rotateWorld(page) {
+  const canvas = page.locator("#world-canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("World canvas is not visible");
+  const startX = bounds.x + bounds.width * 0.5;
+  const startY = bounds.y + bounds.height * 0.5;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 120, startY - 48, { steps: 12 });
+  await page.mouse.up();
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  await settle(page, 700);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  await settle(page, 100);
+}
+
 await mkdir("../docs/screenshots", { recursive: true });
 await mkdir("public", { recursive: true });
 
-const openingDesktop = await readyPage({ width: 1440, height: 900 });
+const openingDesktop = await readyPage({ width: 1440, height: 1000 });
 await capture(
   openingDesktop.page,
   "../docs/screenshots/opening-desktop.png",
@@ -71,7 +88,7 @@ await capture(
 );
 await openingDesktop.context.close();
 
-const desktop = await readyPage({ width: 1440, height: 900 });
+const desktop = await readyPage({ width: 1440, height: 1000 });
 await begin(desktop.page);
 await capture(desktop.page, "../docs/screenshots/journey-start-desktop.png");
 
@@ -84,6 +101,13 @@ await capture(desktop.page, "../docs/screenshots/route-choice-desktop.png");
 
 await proceed(desktop.page, 3);
 await desktop.page.locator("#release-button").click();
+await capture(desktop.page, "../docs/screenshots/heat-early-desktop.png", 120);
+await desktop.page.waitForFunction(
+  () => Number(document.querySelector("#world-canvas")?.dataset.heatFrame) >= 5,
+  undefined,
+  { timeout: 7_000 },
+);
+await capture(desktop.page, "../docs/screenshots/heat-middle-desktop.png", 80);
 await desktop.page.waitForFunction(
   () =>
     document.querySelector("#world-canvas")?.dataset.heatMode === "released",
@@ -122,16 +146,64 @@ const desktopMetrics = await desktop.page.evaluate(() => ({
 console.log("desktop", JSON.stringify(desktopMetrics));
 await desktop.context.close();
 
-for (const genus of [1, 3]) {
-  const genusPage = await readyPage({ width: 1440, height: 900 });
+for (const genus of [1, 3, 4, 5]) {
+  const genusPage = await readyPage({ width: 1440, height: 1000 });
   await begin(genusPage.page);
   await selectGenus(genusPage.page, genus);
   await capture(
     genusPage.page,
     `../docs/screenshots/genus-${genus}-desktop.png`,
   );
+  if (genus >= 3) {
+    await rotateWorld(genusPage.page);
+    await capture(
+      genusPage.page,
+      `../docs/screenshots/genus-${genus}-alternate-desktop.png`,
+      100,
+    );
+  }
+  if (genus === 5) {
+    await genusPage.page.locator("#reset-view").click();
+    for (const act of [0, 1, 2]) await proceed(genusPage.page, act);
+    await genusPage.page.locator('button[data-route-id="basin-rim"]').click();
+    await proceed(genusPage.page, 3);
+    await genusPage.page.locator("#release-button").click();
+    await capture(
+      genusPage.page,
+      "../docs/screenshots/genus-5-heat-early-desktop.png",
+      120,
+    );
+    await genusPage.page.waitForFunction(
+      () =>
+        Number(document.querySelector("#world-canvas")?.dataset.heatFrame) >= 5,
+      undefined,
+      { timeout: 7_000 },
+    );
+    await capture(
+      genusPage.page,
+      "../docs/screenshots/genus-5-heat-middle-desktop.png",
+      80,
+    );
+    await genusPage.page.waitForFunction(
+      () =>
+        document.querySelector("#world-canvas")?.dataset.heatMode ===
+        "released",
+      undefined,
+      { timeout: 7_000 },
+    );
+    await capture(
+      genusPage.page,
+      "../docs/screenshots/genus-5-heat-final-desktop.png",
+      120,
+    );
+  }
   await genusPage.context.close();
 }
+
+const desktop1280 = await readyPage({ width: 1280, height: 800 });
+await begin(desktop1280.page);
+await capture(desktop1280.page, "../docs/screenshots/journey-start-1280.png");
+await desktop1280.context.close();
 
 const tablet = await readyPage({ width: 768, height: 1024 });
 await begin(tablet.page);
@@ -191,5 +263,47 @@ await begin(genusThreeMobile.page);
 await selectGenus(genusThreeMobile.page, 3);
 await capture(genusThreeMobile.page, "../docs/screenshots/genus-3-mobile.png");
 await genusThreeMobile.context.close();
+
+const reduced = await readyPage(
+  { width: 1440, height: 1000 },
+  { reducedMotion: "reduce" },
+);
+await begin(reduced.page);
+for (const act of [0, 1, 2]) await proceed(reduced.page, act);
+await reduced.page.locator('button[data-route-id="outer-ridge"]').click();
+await proceed(reduced.page, 3);
+await reduced.page.locator("#release-button").click();
+await reduced.page.waitForFunction(
+  () => document.body.dataset.heatReleased === "true",
+);
+await capture(
+  reduced.page,
+  "../docs/screenshots/heat-reduced-motion-desktop.png",
+  100,
+);
+await reduced.context.close();
+
+const fallbackContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 1,
+  colorScheme: "dark",
+});
+const fallbackPage = await fallbackContext.newPage();
+await fallbackPage.addInitScript(() => {
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (contextId, options) {
+    if (contextId.startsWith("webgl")) return null;
+    return original.call(this, contextId, options);
+  };
+});
+await fallbackPage.goto(baseUrl, { waitUntil: "networkidle" });
+await fallbackPage.locator("#start-button").waitFor({ state: "visible" });
+await fallbackPage.waitForFunction(
+  () => !document.querySelector("#start-button")?.hasAttribute("disabled"),
+);
+await fallbackPage.locator("#start-button").click();
+await fallbackPage.locator("#webgl-fallback").waitFor({ state: "visible" });
+await capture(fallbackPage, "../docs/screenshots/fallback-mobile.png", 100);
+await fallbackContext.close();
 
 await browser.close();

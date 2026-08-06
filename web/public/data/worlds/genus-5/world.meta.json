@@ -1,0 +1,34 @@
+{
+  "schema": "geodesic-world-v4",
+  "title": "The Shortest Path Through a Curved World",
+  "accessibleLabel": "Genus 5 closed orientable curved world",
+  "mesh": {"kind": "implicit-thickened-loop-graph", "genus": 5, "resolution": 64, "tubeRadius": 0.3, "relief": 0.16, "seed": 1592594996},
+  "generator": {"composition": "five-point-rosette", "junction": "shared-central-junction", "cycleRank": 5, "centerlineSamples": 72, "ringRadius": 0.74, "loopWidth": 0.3182, "effectiveTubeRadius": 0.204, "smoothMinimumRadius": 0.04488, "gridOffsetFractions": [0.23, 0.37, 0.19], "smoothingPasses": 12, "reprojectionPasses": 4, "samplingMinimum": [-1.99399902305, -1.74807055147, -0.661404450378], "samplingMaximum": [1.96522617013, 2.08742885442, 0.699579209777]},
+  "vertices": 18344,
+  "edges": 55056,
+  "faces": 36704,
+  "bounds": {"center": [-0.0167826226531, 0.0214370044018, 0.00249465997087], "radius": 1.71541833835},
+  "sourceVertex": 9975,
+  "source": {"label": "Rescue beacon", "surfacePoint": {"face": 19233, "barycentric": [0.375611044625, 0.604388955375, 0.02]}, "anchor": [-0.0188186649967, 1.67284889068, 0.0201448475381]},
+  "topology": {"closed": true, "orientedManifold": true, "connectedComponents": 1, "boundaryEdges": 0, "eulerCharacteristic": -8, "genus": 5, "signedVolume": 1.77317460547},
+  "quality": {"minimumAngleDegrees": 11.0275890423, "onePercentileAngleDegrees": 28.5271532652, "maximumAspectRatio": 5.90164037862, "minimumFaceArea": 4.00605225132e-05},
+  "meanEdgeLength": 0.0321618940333,
+  "heatMethodTimeStep": 0.00103438742781,
+  "laplacianSign": "positive-semidefinite stiffness matrix approximating -Delta",
+  "boundaryCondition": "natural Neumann; generated worlds are closed",
+  "heatEncoding": "per-frame log(u), linearly quantized to uint16",
+  "heatDisplay": {"kind": "visualization-diffusion-frames", "frameCount": 9, "pathSolveUsesDisplayFrames": false, "timeStepMultipliers": [0.18, 0.45, 1, 2.5, 6.5, 18, 52, 150, 430], "frameTimes": [0.000186189737006, 0.000465474342515, 0.00103438742781, 0.00258596856953, 0.00672351828077, 0.0186189737006, 0.0537881462462, 0.155158114172, 0.444786593959]},
+  "heatResidual": 2.46126015773e-16,
+  "poissonResidual": 2.32712211916e-13,
+  "zeroGradientFaces": 0,
+  "routePresets": [
+    {"id": "outer-ridge", "label": "Far point", "description": "Cross the far outer lobe toward the beacon.", "start": {"face": 12373, "barycentric": [0.73049010544, 0.130752630158, 0.138757264401]}, "dijkstraStartVertex": 4174, "ambientChordLength": 3.19085288891, "edgeDijkstraRouteLength": 3.66883959479, "tracedHeatMethodRouteLength": 3.47293632769, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 0, "nativePathCount": 266},
+    {"id": "central-neck", "label": "Central junction", "description": "Leave the shared central junction and turn onto a neighboring lobe.", "start": {"face": 2196, "barycentric": [0.5, 0.27, 0.23]}, "dijkstraStartVertex": 1225, "ambientChordLength": 1.71161286324, "edgeDijkstraRouteLength": 1.86186517598, "tracedHeatMethodRouteLength": 1.95274600057, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 266, "nativePathCount": 34},
+    {"id": "basin-rim", "label": "Rosette rim", "description": "Skirt a rosette petal before crossing the connected center.", "start": {"face": 35743, "barycentric": [0.714092371836, 0.143362089996, 0.142545538168]}, "dijkstraStartVertex": 17904, "ambientChordLength": 1.98817315158, "edgeDijkstraRouteLength": 2.47339216193, "tracedHeatMethodRouteLength": 2.3193970323, "tracingReachedSource": true, "fallbackUsed": false, "nativePathOffset": 300, "nativePathCount": 157}
+  ],
+  "solver": {"language": "C++20", "library": "Eigen 3.4", "precision": "float64", "direct": "SimplicialLDLT", "iterative": "conjugate gradient with incomplete Cholesky"},
+  "references": [
+    "Keenan Crane, Discrete Differential Geometry",
+    "Crane, Weischedel, and Wardetzky, Geodesics in Heat, ACM TOG 2013"
+  ]
+}

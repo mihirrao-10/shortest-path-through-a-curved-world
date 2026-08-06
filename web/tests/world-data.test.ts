@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { traceSurfacePath } from "../src/path-tracer";
 import {
+  SUPPORTED_GENERA,
   WorldDataRepository,
+  heatFrameInterpolation,
+  isSupportedGenus,
   parseWorldBinary,
   parseWorldManifest,
   parseWorldMetadata,
@@ -76,13 +79,16 @@ function nativeRoutePoints(
 }
 
 describe("multi-world native export", () => {
-  it("parses the exact three-world manifest with Genus 2 as default", () => {
+  it("parses the exact five-world manifest with Genus 2 as default", () => {
     const manifest = parseWorldManifest(rawManifest());
     expect(manifest.defaultGenus).toBe(2);
-    expect(manifest.supportedGenera).toEqual([1, 2, 3]);
-    expect(manifest.worlds.map((world) => world.genus)).toEqual([1, 2, 3]);
+    expect(SUPPORTED_GENERA).toEqual([1, 2, 3, 4, 5]);
+    expect(manifest.supportedGenera).toEqual(SUPPORTED_GENERA);
+    expect(manifest.worlds.map((world) => world.genus)).toEqual(
+      SUPPORTED_GENERA,
+    );
     expect(new Set(manifest.worlds.map((world) => world.vertices)).size).toBe(
-      3,
+      5,
     );
     expect(manifest.worlds.every((world) => world.binaryBytes > 100_000)).toBe(
       true,
@@ -97,15 +103,28 @@ describe("multi-world native export", () => {
     const unsupported = structuredClone(rawManifest()) as {
       supportedGenera: number[];
     };
-    unsupported.supportedGenera = [1, 2, 4];
+    unsupported.supportedGenera = [1, 2, 3, 4, 6];
     expect(() => parseWorldManifest(unsupported)).toThrow(/supported genera/i);
+    expect(isSupportedGenus(1)).toBe(true);
+    expect(isSupportedGenus(5)).toBe(true);
+    expect(isSupportedGenus(0)).toBe(false);
+    expect(isSupportedGenus(6)).toBe(false);
   });
 
   it("derives and validates topology for every genus without grid assumptions", () => {
-    for (const genus of [1, 2, 3] as const) {
+    const expectedCompositions = [
+      "irregular-ring",
+      "folded-double-loop",
+      "rounded-triangle-rosette",
+      "rounded-diamond-rosette",
+      "five-point-rosette",
+    ] as const;
+    const expectedSmoothingPasses = [4, 4, 8, 8, 12] as const;
+    const expectedReprojectionPasses = [4, 4, 8, 8, 4] as const;
+    for (const genus of SUPPORTED_GENERA) {
       const { data, metadata } = loadWorld(genus);
       expect(data.version).toBe(3);
-      expect(data.heatFrames).toHaveLength(6);
+      expect(data.heatFrames).toHaveLength(9);
       expect(data.routeCount).toBe(3);
       expect(data.nativeRoutePoints).toHaveLength(data.routePointCount * 3);
       expect(data.gradientSamples.length).toBeGreaterThan(200);
@@ -120,6 +139,27 @@ describe("multi-world native export", () => {
       expect(metadata.mesh.kind).toBe("implicit-thickened-loop-graph");
       expect(metadata.mesh.genus).toBe(genus);
       expect(metadata.mesh.resolution).toBeGreaterThanOrEqual(28);
+      expect(metadata.generator.composition).toBe(
+        expectedCompositions[genus - 1],
+      );
+      expect(metadata.generator.cycleRank).toBe(genus);
+      expect(metadata.generator.smoothingPasses).toBe(
+        expectedSmoothingPasses[genus - 1],
+      );
+      expect(metadata.generator.reprojectionPasses).toBe(
+        expectedReprojectionPasses[genus - 1],
+      );
+      expect(metadata.generator.gridOffsetFractions).toEqual(
+        genus >= 3 ? [0.23, 0.37, 0.19] : [0, 0, 0],
+      );
+      expect(metadata.heatDisplay.frameCount).toBe(data.heatFrameCount);
+      expect(metadata.heatDisplay.pathSolveUsesDisplayFrames).toBe(false);
+      expect(metadata.heatDisplay.timeStepMultipliers).toEqual([
+        0.18, 0.45, 1, 2.5, 6.5, 18, 52, 150, 430,
+      ]);
+      metadata.heatDisplay.frameTimes.forEach((time, frame) => {
+        expect(time).toBeCloseTo(data.frameTimes[frame]!, 10);
+      });
       expect(metadata.topology.genus).toBe(genus);
       expect(metadata.quality.minimumAngleDegrees).toBeGreaterThan(10);
       expect(metadata.quality.onePercentileAngleDegrees).toBeGreaterThan(25);
@@ -128,7 +168,7 @@ describe("multi-world native export", () => {
   });
 
   it("uses three authoritative native paths and plausible native measurements", () => {
-    for (const genus of [1, 2, 3] as const) {
+    for (const genus of SUPPORTED_GENERA) {
       const { data, metadata } = loadWorld(genus);
       expect(metadata.routePresets.map((route) => route.id)).toEqual([
         "outer-ridge",
@@ -172,6 +212,35 @@ describe("multi-world native export", () => {
     }
   });
 
+  it("interpolates early, middle, and final progress for dynamic frame counts", () => {
+    expect(heatFrameInterpolation(9, 0)).toEqual({
+      first: 0,
+      second: 1,
+      mix: 0,
+      visibleFrame: 0,
+    });
+    expect(heatFrameInterpolation(9, 0.5)).toEqual({
+      first: 4,
+      second: 5,
+      mix: 0,
+      visibleFrame: 4,
+    });
+    expect(heatFrameInterpolation(9, 1)).toEqual({
+      first: 8,
+      second: 8,
+      mix: 0,
+      visibleFrame: 8,
+    });
+    expect(heatFrameInterpolation(4, 0.5)).toEqual({
+      first: 1,
+      second: 2,
+      mix: 0.5,
+      visibleFrame: 2,
+    });
+    expect(() => heatFrameInterpolation(0, 0.5)).toThrow(/frame count/i);
+    expect(() => heatFrameInterpolation(3, Number.NaN)).toThrow(/finite/i);
+  });
+
   it("rejects malformed topology and malformed native path ranges", () => {
     const { data, metadataValue } = loadWorld(2);
     const wrongTopology = structuredClone(metadataValue) as {
@@ -189,6 +258,14 @@ describe("multi-world native export", () => {
     wrongQuality.quality.minimumAngleDegrees += 1;
     expect(() => parseWorldMetadata(wrongQuality, data)).toThrow(
       /does not match/i,
+    );
+
+    const wrongDisplay = structuredClone(metadataValue) as {
+      heatDisplay: { frameCount: number; frameTimes: number[] };
+    };
+    wrongDisplay.heatDisplay.frameTimes[4]! += 0.1;
+    expect(() => parseWorldMetadata(wrongDisplay, data)).toThrow(
+      /heat display/i,
     );
 
     const wrongRange = structuredClone(metadataValue) as {
@@ -273,6 +350,18 @@ describe("multi-world native export", () => {
     ).toHaveLength(1);
     expect(requests.filter((url) => url.includes("genus-2/"))).toHaveLength(2);
     expect(requests.some((url) => url.includes("genus-3/"))).toBe(false);
+    expect(requests.some((url) => url.includes("genus-4/"))).toBe(false);
+    expect(requests.some((url) => url.includes("genus-5/"))).toBe(false);
+
+    const genusFour = await repository.loadWorld(4);
+    expect(await repository.loadWorld(4)).toBe(genusFour);
+    expect(genusFour.metadata.mesh.genus).toBe(4);
+    expect(requests.filter((url) => url.includes("genus-4/"))).toHaveLength(2);
+    await expect(repository.loadWorld(5)).resolves.toMatchObject({
+      metadata: { mesh: { genus: 5 } },
+    });
+    expect(repository.isCached(5)).toBe(true);
+    expect(requests.filter((url) => url.includes("genus-5/"))).toHaveLength(2);
 
     await expect(repository.loadWorld(1)).rejects.toThrow(/503/);
     expect(repository.isCached(1)).toBe(false);
@@ -280,5 +369,9 @@ describe("multi-world native export", () => {
       metadata: { mesh: { genus: 1 } },
     });
     expect(repository.isCached(1)).toBe(true);
+
+    await expect(
+      repository.loadWorld(6 as unknown as SupportedGenus),
+    ).rejects.toThrow(/unsupported/i);
   });
 });

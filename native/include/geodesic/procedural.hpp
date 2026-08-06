@@ -37,10 +37,27 @@ struct WorldTopology {
   double signedVolume{0.0};
 };
 
+struct WorldGeneratorMetadata {
+  std::string composition;
+  std::string junction;
+  int cycleRank{0};
+  int centerlineSamples{0};
+  double ringRadius{0.0};
+  double loopWidth{0.0};
+  double effectiveTubeRadius{0.0};
+  double smoothMinimumRadius{0.0};
+  Vec3 gridOffsetFractions{Vec3::Zero()};
+  int smoothingPasses{0};
+  int reprojectionPasses{0};
+  Vec3 samplingMinimum{Vec3::Zero()};
+  Vec3 samplingMaximum{Vec3::Zero()};
+};
+
 struct GeneratedCurvedWorld {
   TriangleMesh mesh;
   WorldLandmarks landmarks;
   WorldTopology topology;
+  WorldGeneratorMetadata generator;
   Vec3 center{Vec3::Zero()};
   double boundingRadius{0.0};
 };

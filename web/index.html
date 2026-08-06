@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A guided C++20 Heat Method journey across native-generated Genus 1, Genus 2, and Genus 3 surfaces."
+      content="A guided C++20 Heat Method journey across five native-generated worlds, from Genus 1 through Genus 5."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -56,9 +56,27 @@
       aria-labelledby="opening-screen-title"
     >
       <div class="opening-screen__content">
+        <a
+          class="opening-repository-link"
+          href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open The Shortest Path Through a Curved World on GitHub"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.74-1.55-2.57-.29-5.27-1.29-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.71 5.4-5.29 5.69.42.36.79 1.06.79 2.14v3.26c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .7Z"
+            />
+          </svg>
+          <span>View GitHub repository</span>
+        </a>
         <h1 id="opening-screen-title" class="chapter-title">
           The Shortest Path Through a Curved World
         </h1>
+        <p class="opening-screen__premise">
+          A beacon is visible across a world you are not allowed to leave.
+        </p>
         <button
           id="start-button"
           class="start-button"
@@ -132,8 +150,9 @@
                 <div id="webgl-fallback" class="webgl-fallback" hidden>
                   <div class="fallback-world" aria-hidden="true"></div>
                   <p>
-                    The interactive rendering is unavailable. The measured
-                    routes, guided story, and mathematics remain available.
+                    The interactive rendering is unavailable. Geometry and
+                    measurements still come from the native C++ pipeline; the
+                    guided story and mathematics remain available.
                   </p>
                 </div>
               </div>
@@ -157,6 +176,12 @@
                   </button>
                   <button type="button" data-genus="3" aria-pressed="false">
                     Genus 3
+                  </button>
+                  <button type="button" data-genus="4" aria-pressed="false">
+                    Genus 4
+                  </button>
+                  <button type="button" data-genus="5" aria-pressed="false">
+                    Genus 5
                   </button>
                 </div>
               </div>
@@ -185,14 +210,17 @@
                   How heat reconstructs distance on a triangulated surface.
                 </p>
                 <p class="lead">
-                  An explorer stands on a folded world. An amber beacon waits
-                  across its ridges, necks, and basin. What is the shortest
-                  route that never leaves the surface?
+                  Imagine you are stranded on a torus-shaped world. A rescue
+                  beacon glows across the surface. The straight line to it cuts
+                  through empty space, but you cannot leave the ground. What is
+                  the shortest route you can actually walk?
                 </p>
                 <p>
-                  Genus counts handles: Genus 1 has one, Genus 2 has two, and
-                  Genus 3 has three. For a connected, closed, orientable
-                  triangulated surface,
+                  The journey opens on a folded two-handled world. You can later
+                  change its topology, but the rule never changes: every valid
+                  step must remain on the surface. Genus counts handles, and the
+                  selector spans one through five. For a connected, closed,
+                  orientable triangulated surface,
                   <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
                   changes global topology, not merely cosmetic shape.
                 </p>
@@ -222,8 +250,9 @@
                   Why not draw a straight line?
                 </h2>
                 <p>
-                  The curved world is a two-dimensional surface inside ordinary
-                  three-dimensional space. That surrounding room is the
+                  The first temptation is a straight line. The curved world is a
+                  two-dimensional surface inside ordinary three-dimensional
+                  space. That surrounding room is the
                   <em>ambient space</em>. A straight line may move anywhere in
                   that room, including places where the surface is absent.
                 </p>
@@ -279,11 +308,12 @@
                   How can a computer hold the surface?
                 </h2>
                 <p>
-                  A <em>triangle mesh</em> stores sampled points called
-                  vertices, links called edges, and triangular faces. Every face
-                  is flat. Halfedge connectivity, a directed-edge record that
-                  links neighboring faces, joins them into one closed surface
-                  without a boundary.
+                  To remain on the world, the computer first needs a map. A
+                  <em>triangle mesh</em> stores sampled points called vertices,
+                  links called edges, and triangular faces. Every face is flat.
+                  Halfedge connectivity, a directed-edge record that links
+                  neighboring faces, joins them into one closed surface without
+                  a boundary.
                 </p>
                 <p>
                   More, better-shaped triangles usually reduce discretization
@@ -298,11 +328,11 @@
                   a separate numerical Gaussian-curvature computation.
                 </p>
                 <p>
-                  Edge Dijkstra sees only the graph of vertices and edges. It
-                  finds the exact shortest route in that graph, but it cannot
-                  cut across a triangle interior. Its result can zigzag or
-                  change with the available edge directions, so it is a baseline
-                  rather than the continuous surface answer.
+                  Dijkstra can follow the mesh, but the mesh edges restrict its
+                  directions. It finds the exact shortest route in that graph,
+                  but it cannot cut across a triangle interior. Its result can
+                  zigzag or change with the available edge directions, so it is
+                  a baseline rather than the continuous surface answer.
                 </p>
                 <p class="margin-note">
                   The edge route is not an exact continuous geodesic on the
@@ -415,10 +445,10 @@
                   Release heat
                 </h2>
                 <p>
-                  Heat begins at the shared beacon, then diffuses through the
-                  connected surface. It travels around handles, through necks,
-                  and across relief because the discrete equation offers no
-                  route through ambient space.
+                  Now warm the beacon for an instant. Heat begins there, then
+                  diffuses through the connected surface. It travels around
+                  handles, through necks, and across relief because the discrete
+                  equation offers no route through ambient space.
                 </p>
                 <p class="revelation">Can the flow of heat reveal distance?</p>
                 <button
@@ -437,7 +467,7 @@
                   aria-live="polite"
                   aria-atomic="true"
                 >
-                  Six exported diffusion states are ready.
+                  Native diffusion states are ready.
                 </p>
                 <div class="chapter-proceed">
                   <button
@@ -468,10 +498,11 @@
                   Warmth becomes direction
                 </h2>
                 <p>
-                  On each face, piecewise-linear heat values form a constant
-                  local slope. A <em>gradient</em> is the direction and rate of
-                  steepest increase. The heat gradient points toward the hot
-                  source, so negating it points outward toward increasing
+                  Warmth first reveals direction, then a distance field reveals
+                  a route. On each face, piecewise-linear heat values form a
+                  constant local slope. A <em>gradient</em> is the direction and
+                  rate of steepest increase. The heat gradient points toward the
+                  hot source, so negating it points outward toward increasing
                   distance. Normalizing keeps direction while discarding
                   magnitude.
                 </p>
@@ -874,10 +905,11 @@
                 </h2>
                 <p class="lead">Heat reveals a way home.</p>
                 <p>
-                  Diffuse from the beacon, normalize the facewise gradient,
-                  reconstruct distance, then follow that field downhill across
-                  the mesh surface. The route is approximate, measurable, and
-                  repeatable for every exported start.
+                  The explorer can finally follow a path that stays on the
+                  surface. Diffuse from the beacon, normalize the facewise
+                  gradient, reconstruct distance, then follow that field
+                  downhill across the mesh. The route is approximate,
+                  measurable, and repeatable for every exported start.
                 </p>
                 <div class="chapter-proceed">
                   <button
@@ -919,11 +951,12 @@
               <span>01</span>
               <h3>C++20 multi-genus generation</h3>
               <p>
-                A project-specific implicit field thickens a deterministic chain
-                of rounded loops. Marching tetrahedra reuses edge intersections,
-                smooths tangentially, reprojects to the level set, and verifies
-                orientation, manifold structure, Euler characteristic, triangle
-                quality, and landmarks.
+                A project-specific implicit field thickens a deterministic ring,
+                folded double loop, or shared-junction rosette. Marching
+                tetrahedra reuses edge intersections, smooths tangentially,
+                reprojects to the level set, and verifies orientation, manifold
+                structure, Euler characteristic, triangle quality, and
+                landmarks.
               </p>
             </article>
             <article>
@@ -940,9 +973,10 @@
               <span>03</span>
               <h3>Deterministic C++ export</h3>
               <p>
-                The exporter writes indexed geometry, adjacency, six heat
-                states, distance, Dijkstra data, gradient samples, route
-                presets, C++ trace measurements, topology, and solver metadata.
+                The exporter writes indexed geometry, adjacency, nine native
+                heat-display states, distance, Dijkstra data, gradient samples,
+                route presets, C++ trace measurements, topology, and solver
+                metadata.
               </p>
             </article>
             <article>
@@ -996,7 +1030,10 @@
                 </div>
                 <div>
                   <dt>Encoding</dt>
-                  <dd>Binary schema v3 with C++ paths and six heat frames</dd>
+                  <dd>
+                    Binary schema v3, metadata v4, C++ paths, and nine heat
+                    frames
+                  </dd>
                 </div>
               </dl>
             </div>
