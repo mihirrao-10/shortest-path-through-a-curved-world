@@ -1,5 +1,4 @@
-export const SUPPORTED_GENERA = [1, 2, 3, 4, 5] as const;
-export type SupportedGenus = (typeof SUPPORTED_GENERA)[number];
+export type SupportedGenus = 1 | 2 | 3;
 export type RoutePresetId = string;
 
 export interface WorldManifestEntry {
@@ -17,7 +16,7 @@ export interface WorldManifest {
   schema: "geodesic-world-manifest-v1";
   binarySchemaVersion: 3;
   defaultGenus: 2;
-  supportedGenera: typeof SUPPORTED_GENERA;
+  supportedGenera: readonly [1, 2, 3];
   worlds: WorldManifestEntry[];
 }
 
@@ -42,7 +41,7 @@ export interface RoutePreset {
 }
 
 export interface WorldMetadata {
-  schema: "geodesic-world-v4";
+  schema: "geodesic-world-v3";
   title: string;
   accessibleLabel: string;
   mesh: {
@@ -52,26 +51,6 @@ export interface WorldMetadata {
     tubeRadius: number;
     relief: number;
     seed: number;
-  };
-  generator: {
-    composition:
-      | "irregular-ring"
-      | "folded-double-loop"
-      | "rounded-triangle-rosette"
-      | "rounded-diamond-rosette"
-      | "five-point-rosette";
-    junction: "overlap-chain" | "shared-central-junction";
-    cycleRank: SupportedGenus;
-    centerlineSamples: number;
-    ringRadius: number;
-    loopWidth: number;
-    effectiveTubeRadius: number;
-    smoothMinimumRadius: number;
-    gridOffsetFractions: readonly [number, number, number];
-    smoothingPasses: number;
-    reprojectionPasses: number;
-    samplingMinimum: readonly [number, number, number];
-    samplingMaximum: readonly [number, number, number];
   };
   vertices: number;
   edges: number;
@@ -103,13 +82,6 @@ export interface WorldMetadata {
   laplacianSign: string;
   boundaryCondition: string;
   heatEncoding: string;
-  heatDisplay: {
-    kind: "visualization-diffusion-frames";
-    frameCount: number;
-    pathSolveUsesDisplayFrames: false;
-    timeStepMultipliers: number[];
-    frameTimes: number[];
-  };
   heatResidual: number;
   poissonResidual: number;
   zeroGradientFaces: number;
@@ -184,35 +156,9 @@ export interface WorldBundle {
   manifestEntry: WorldManifestEntry;
 }
 
-export interface HeatFrameInterpolation {
-  first: number;
-  second: number;
-  mix: number;
-  visibleFrame: number;
-}
-
-export function heatFrameInterpolation(
-  frameCount: number,
-  progress: number,
-): HeatFrameInterpolation {
-  if (!Number.isInteger(frameCount) || frameCount < 1) {
-    throw new Error("Heat frame count must be a positive integer");
-  }
-  if (!Number.isFinite(progress)) {
-    throw new Error("Heat progress must be finite");
-  }
-  const scaled = Math.max(0, Math.min(1, progress)) * (frameCount - 1);
-  const first = Math.floor(scaled);
-  const second = Math.min(first + 1, frameCount - 1);
-  return {
-    first,
-    second,
-    mix: scaled - first,
-    visibleFrame: Math.min(frameCount - 1, Math.round(scaled)),
-  };
-}
-
 const MAGIC = "GEOWRLD3";
+const SUPPORTED_GENERA = [1, 2, 3] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -221,17 +167,9 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-export function isSupportedGenus(value: unknown): value is SupportedGenus {
-  return SUPPORTED_GENERA.some((genus) => value === genus);
+function isSupportedGenus(value: unknown): value is SupportedGenus {
+  return value === 1 || value === 2 || value === 3;
 }
-
-const EXPECTED_COMPOSITIONS = {
-  1: "irregular-ring",
-  2: "folded-double-loop",
-  3: "rounded-triangle-rosette",
-  4: "rounded-diamond-rosette",
-  5: "five-point-rosette",
-} as const satisfies Record<SupportedGenus, string>;
 
 function parseVector3(value: unknown, label: string): [number, number, number] {
   if (
@@ -419,9 +357,9 @@ export function parseWorldManifest(value: unknown): WorldManifest {
     value.binarySchemaVersion !== 3 ||
     value.defaultGenus !== 2 ||
     !Array.isArray(supported) ||
-    supported.length !== SUPPORTED_GENERA.length ||
+    supported.length !== 3 ||
     !SUPPORTED_GENERA.every((genus, index) => supported[index] === genus) ||
-    value.worlds.length !== SUPPORTED_GENERA.length
+    value.worlds.length !== 3
   ) {
     throw new Error("World manifest schema or supported genera are invalid");
   }
@@ -1001,15 +939,13 @@ export function parseWorldMetadata(
 ): WorldMetadata {
   if (!isRecord(value)) throw new Error("World metadata is not an object");
   const mesh = value.mesh;
-  const generator = value.generator;
   const bounds = value.bounds;
   const source = value.source;
   const topology = value.topology;
   const quality = value.quality;
-  const heatDisplay = value.heatDisplay;
   const solver = value.solver;
   if (
-    value.schema !== "geodesic-world-v4" ||
+    value.schema !== "geodesic-world-v3" ||
     typeof value.title !== "string" ||
     value.title.length === 0 ||
     typeof value.accessibleLabel !== "string" ||
@@ -1024,25 +960,6 @@ export function parseWorldMetadata(
     !isFiniteNumber(mesh.relief) ||
     mesh.relief < 0 ||
     !Number.isInteger(mesh.seed) ||
-    !isRecord(generator) ||
-    generator.composition !== EXPECTED_COMPOSITIONS[mesh.genus] ||
-    generator.junction !==
-      (mesh.genus <= 2 ? "overlap-chain" : "shared-central-junction") ||
-    generator.cycleRank !== mesh.genus ||
-    !Number.isInteger(generator.centerlineSamples) ||
-    generator.centerlineSamples !== (mesh.genus >= 3 ? 72 : 0) ||
-    !isFiniteNumber(generator.ringRadius) ||
-    generator.ringRadius <= 0 ||
-    !isFiniteNumber(generator.loopWidth) ||
-    generator.loopWidth < 0 ||
-    !isFiniteNumber(generator.effectiveTubeRadius) ||
-    generator.effectiveTubeRadius <= 0 ||
-    !isFiniteNumber(generator.smoothMinimumRadius) ||
-    generator.smoothMinimumRadius <= 0 ||
-    !Number.isInteger(generator.smoothingPasses) ||
-    (generator.smoothingPasses as number) <= 0 ||
-    !Number.isInteger(generator.reprojectionPasses) ||
-    (generator.reprojectionPasses as number) <= 0 ||
     value.vertices !== data.vertexCount ||
     value.edges !== data.derivedTopology.edges ||
     value.faces !== data.faceCount ||
@@ -1094,19 +1011,6 @@ export function parseWorldMetadata(
     typeof value.laplacianSign !== "string" ||
     typeof value.boundaryCondition !== "string" ||
     typeof value.heatEncoding !== "string" ||
-    !isRecord(heatDisplay) ||
-    heatDisplay.kind !== "visualization-diffusion-frames" ||
-    heatDisplay.frameCount !== data.heatFrameCount ||
-    data.heatFrameCount < 3 ||
-    heatDisplay.pathSolveUsesDisplayFrames !== false ||
-    !Array.isArray(heatDisplay.timeStepMultipliers) ||
-    heatDisplay.timeStepMultipliers.length !== data.heatFrameCount ||
-    !heatDisplay.timeStepMultipliers.every(
-      (multiplier) => isFiniteNumber(multiplier) && multiplier > 0,
-    ) ||
-    !Array.isArray(heatDisplay.frameTimes) ||
-    heatDisplay.frameTimes.length !== data.heatFrameCount ||
-    !heatDisplay.frameTimes.every((time) => isFiniteNumber(time) && time > 0) ||
     !isFiniteNumber(value.heatResidual) ||
     value.heatResidual < 0 ||
     !isFiniteNumber(value.poissonResidual) ||
@@ -1128,18 +1032,6 @@ export function parseWorldMetadata(
     throw new Error("World metadata does not match the binary payload");
   }
   const center = parseVector3(bounds.center, "World bounds center");
-  const samplingMinimum = parseVector3(
-    generator.samplingMinimum,
-    "World sampling minimum",
-  );
-  const samplingMaximum = parseVector3(
-    generator.samplingMaximum,
-    "World sampling maximum",
-  );
-  const gridOffsetFractions = parseVector3(
-    generator.gridOffsetFractions,
-    "World grid offset fractions",
-  );
   const anchor = parseVector3(source.anchor, "World source anchor");
   const sourceSurfacePoint = parseSurfacePoint(
     source.surfacePoint,
@@ -1147,14 +1039,6 @@ export function parseWorldMetadata(
     "World source surface point",
   );
   if (
-    gridOffsetFractions.some((fraction) => fraction < 0 || fraction >= 1) ||
-    (mesh.genus <= 2 &&
-      gridOffsetFractions.some((fraction) => fraction !== 0)) ||
-    (mesh.genus >= 3 &&
-      gridOffsetFractions.every((fraction) => fraction === 0)) ||
-    samplingMinimum.some(
-      (minimum, axis) => minimum >= samplingMaximum[axis]!,
-    ) ||
     distance3(center, data.derivedBounds.center) >
       Math.max(1e-6, data.derivedBounds.radius * 2e-5) ||
     Math.abs(bounds.radius - data.derivedBounds.radius) >
@@ -1169,27 +1053,6 @@ export function parseWorldMetadata(
       "World bounds or source landmark do not match the binary payload",
     );
   }
-  for (let frame = 0; frame < data.heatFrameCount; frame += 1) {
-    const multiplier = heatDisplay.timeStepMultipliers[frame] as number;
-    const frameTime = heatDisplay.frameTimes[frame] as number;
-    if (
-      (frame > 0 &&
-        multiplier <= (heatDisplay.timeStepMultipliers[frame - 1] as number)) ||
-      Math.abs(frameTime - data.frameTimes[frame]!) >
-        Math.max(1e-12, data.frameTimes[frame]! * 2e-9) ||
-      Math.abs(frameTime - multiplier * data.timeStep) >
-        Math.max(1e-12, frameTime * 2e-9)
-    ) {
-      throw new Error("World heat display metadata is inconsistent");
-    }
-  }
-  if (
-    !heatDisplay.timeStepMultipliers.some(
-      (multiplier) => Math.abs((multiplier as number) - 1) < 1e-12,
-    )
-  ) {
-    throw new Error("World heat display metadata omits the path time scale");
-  }
   const routePresets = parseRoutePresets(value.routePresets, data);
   if (
     new Set(routePresets.map((route) => route.start.face)).size !==
@@ -1202,21 +1065,8 @@ export function parseWorldMetadata(
   }
   return {
     ...(value as unknown as WorldMetadata),
-    generator: {
-      ...(generator as unknown as WorldMetadata["generator"]),
-      gridOffsetFractions,
-      samplingMinimum,
-      samplingMaximum,
-    },
     bounds: { center, radius: bounds.radius },
     source: { label: source.label, surfacePoint: sourceSurfacePoint, anchor },
-    heatDisplay: {
-      kind: "visualization-diffusion-frames",
-      frameCount: data.heatFrameCount,
-      pathSolveUsesDisplayFrames: false,
-      timeStepMultipliers: heatDisplay.timeStepMultipliers as number[],
-      frameTimes: heatDisplay.frameTimes as number[],
-    },
     routePresets,
   };
 }

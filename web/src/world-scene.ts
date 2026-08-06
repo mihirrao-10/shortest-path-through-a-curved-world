@@ -5,12 +5,11 @@ import {
   traceSurfacePath,
   type SurfaceStart,
 } from "./path-tracer";
-import {
-  heatFrameInterpolation,
-  type RoutePreset,
-  type RoutePresetId,
-  type WorldData,
-  type WorldMetadata,
+import type {
+  RoutePreset,
+  RoutePresetId,
+  WorldData,
+  WorldMetadata,
 } from "./world-data";
 
 const INVALID_INDEX = 0xffffffff;
@@ -18,18 +17,18 @@ const HEAT_PATH_COLORS = [0x39ff88, 0x8bffad, 0x1fd66e] as const;
 let activeSceneCount = 0;
 let sceneGeneration = 0;
 
-function actCaptions(genus: number, heatFrameCount: number): readonly string[] {
+function actCaptions(genus: number): readonly string[] {
   return [
-    `An explorer and amber beacon stand on a closed Genus ${genus} world generated and solved by C++.`,
-    "The tempting ambient chord crosses empty space, so the explorer cannot walk it.",
-    "The triangle mesh is the map C++ stores; Dijkstra follows only its edges.",
-    "Choose one of three native explorer starts, all aimed at the same beacon.",
-    `${heatFrameCount} native diffusion states spread only over the valid surface from the amber beacon.`,
-    "Warmth reveals facewise direction before Poisson reconstructs distance.",
+    `A closed genus-${genus} surface generated and solved by the C++ engine.`,
+    "The ambient chord can cross the tube or empty space, so it cannot be walked.",
+    "Dijkstra follows mesh edges and inherits their directional bias.",
+    "Choose the explorer's start: outer ridge, central neck, or basin rim.",
+    "Six exported diffusion states spread over the surface from the amber beacon.",
+    "Depth-tested face arrows and a lifted route follow the reconstructed field.",
     "Contours show level sets of one Heat Method distance field.",
     "A restrained x-ray overlay keeps three fallback-free Heat paths readable.",
     "C++20 and Eigen export geometry, sparse-solve fields, and measured routes.",
-    "The explorer can follow the native approximate path without leaving the surface.",
+    "Orbit the surface to inspect the approximate path from either side.",
   ];
 }
 
@@ -237,10 +236,8 @@ export class WorldScene {
   private readonly colorAttribute: THREE.BufferAttribute;
   private readonly material: THREE.MeshStandardMaterial;
   private readonly mesh: THREE.Mesh;
-  private readonly heatGlow: THREE.Mesh;
   private readonly wireframe: THREE.Mesh;
   private readonly beacon: THREE.Group;
-  private readonly beaconLight: THREE.PointLight;
   private readonly explorer: THREE.Group;
   private readonly gradientLines: THREE.LineSegments;
   private readonly routeVisuals = new Map<RoutePresetId, RouteVisual>();
@@ -326,21 +323,6 @@ export class WorldScene {
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = "computed-curved-world";
-    this.heatGlow = new THREE.Mesh(
-      this.geometry,
-      new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        depthTest: true,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    this.heatGlow.name = "native-heat-glow";
-    this.heatGlow.scale.setScalar(1.0024);
-    this.heatGlow.renderOrder = 1;
     this.wireframe = new THREE.Mesh(
       this.geometry,
       new THREE.MeshBasicMaterial({
@@ -352,7 +334,7 @@ export class WorldScene {
       }),
     );
     this.wireframe.scale.setScalar(1.0012);
-    this.world.add(this.mesh, this.heatGlow, this.wireframe);
+    this.world.add(this.mesh, this.wireframe);
 
     this.sourcePoint = vertexVector(data, data.sourceVertex);
     this.sourceNormal = vertexVector(
@@ -361,9 +343,9 @@ export class WorldScene {
     ).normalize();
     this.beacon = makeMarker(0xffc66d, 0.027);
     placeOnSurface(this.beacon, this.sourcePoint, this.sourceNormal, 0.035);
-    this.beaconLight = new THREE.PointLight(0xffb454, 1.55, 0.78, 1.8);
-    this.beaconLight.position.set(0, 0.04, 0);
-    this.beacon.add(this.beaconLight);
+    const beaconLight = new THREE.PointLight(0xffb454, 1.55, 0.78, 1.8);
+    beaconLight.position.set(0, 0.04, 0);
+    this.beacon.add(beaconLight);
     this.world.add(this.beacon);
 
     this.explorer = makeMarker(0xf5f7f6, 0.022);
@@ -398,8 +380,6 @@ export class WorldScene {
     this.canvas.dataset.topology = `genus-${metadata.topology.genus}`;
     this.canvas.dataset.vertexCount = String(data.vertexCount);
     this.canvas.dataset.faceCount = String(data.faceCount);
-    this.canvas.dataset.heatFrameCount = String(data.heatFrameCount);
-    this.canvas.dataset.heatDisplayNative = "true";
     this.canvas.dataset.eulerCharacteristic = String(
       metadata.topology.eulerCharacteristic,
     );
@@ -444,10 +424,7 @@ export class WorldScene {
   }
 
   get caption(): string {
-    const captions = actCaptions(
-      this.metadata.topology.genus,
-      this.data.heatFrameCount,
-    );
+    const captions = actCaptions(this.metadata.topology.genus);
     if (this.comparisonVisible) return captions[7]!;
     if (this.activeAct === 3 && this.routeChosen) {
       return `${this.selectedPreset.label} is selected. Its exported Heat Method path now connects this start to the beacon.`;
@@ -642,7 +619,6 @@ export class WorldScene {
     disposeObject(this.explorer);
     this.geometry.dispose();
     this.material.dispose();
-    (this.heatGlow.material as THREE.Material).dispose();
     (this.wireframe.material as THREE.Material).dispose();
     this.renderer.dispose();
     if (this.lifecycleRegistered) {
@@ -653,8 +629,6 @@ export class WorldScene {
   }
 
   private applyNonHeatColors(): void {
-    (this.heatGlow.material as THREE.MeshBasicMaterial).opacity = 0;
-    this.beaconLight.intensity = 1.55;
     if ([5, 7, 9].includes(this.activeAct)) {
       this.applyColors(this.distanceColors);
     } else if (this.activeAct === 6) {
@@ -715,23 +689,15 @@ export class WorldScene {
   }
 
   private buildPalette(): void {
-    const cold = new THREE.Color(0x082126);
-    const copper = new THREE.Color(0xb85f3a);
-    const gold = new THREE.Color(0xf2b960);
-    const hot = new THREE.Color(0xfff0cf);
+    const cold = new THREE.Color(0x0f2c34);
+    const ember = new THREE.Color(0xc9693d);
+    const hot = new THREE.Color(0xffd88c);
     for (let index = 0; index < 256; index += 1) {
       const value = index / 255;
-      let color: THREE.Color;
-      if (value < 0.58) {
-        const mix = THREE.MathUtils.smoothstep(value / 0.58, 0, 1);
-        color = cold.clone().lerp(copper, mix);
-      } else if (value < 0.88) {
-        const mix = THREE.MathUtils.smoothstep((value - 0.58) / 0.3, 0, 1);
-        color = copper.clone().lerp(gold, mix);
-      } else {
-        const mix = THREE.MathUtils.smoothstep((value - 0.88) / 0.12, 0, 1);
-        color = gold.clone().lerp(hot, mix);
-      }
+      const color =
+        value < 0.72
+          ? cold.clone().lerp(ember, Math.pow(value / 0.72, 2.2))
+          : ember.clone().lerp(hot, (value - 0.72) / 0.28);
       this.palette.set([color.r, color.g, color.b], 3 * index);
     }
   }
@@ -742,9 +708,14 @@ export class WorldScene {
   }
 
   private applyHeat(progress: number): void {
-    const { first, second, mix, visibleFrame } = heatFrameInterpolation(
-      this.data.heatFrameCount,
-      progress,
+    const scaled =
+      THREE.MathUtils.clamp(progress, 0, 1) * (this.data.heatFrameCount - 1);
+    const first = Math.floor(scaled);
+    const second = Math.min(first + 1, this.data.heatFrameCount - 1);
+    const mix = scaled - first;
+    const visibleFrame = Math.min(
+      this.data.heatFrameCount - 1,
+      Math.round(scaled),
     );
     this.canvas.dataset.heatFrame = String(visibleFrame + 1);
     if (visibleFrame !== this.lastHeatFrame) {
@@ -765,10 +736,6 @@ export class WorldScene {
       this.colors[3 * vertex + 2] = this.palette[3 * paletteIndex + 2]!;
     }
     this.colorAttribute.needsUpdate = true;
-    (this.heatGlow.material as THREE.MeshBasicMaterial).opacity =
-      0.035 + 0.055 * THREE.MathUtils.smoothstep(progress, 0, 1);
-    this.beaconLight.intensity =
-      1.78 + 0.28 * Math.sin(Math.min(progress, 1) * Math.PI);
     this.canvas.dataset.heatProgress = THREE.MathUtils.clamp(
       progress,
       0,
@@ -965,16 +932,11 @@ export class WorldScene {
     const target = this.worldCenter
       .clone()
       .add(new THREE.Vector3(0, this.worldRadius * 0.16, 0));
-    const genus = this.metadata.topology.genus;
-    const direction =
-      genus === 3
-        ? new THREE.Vector3(0.08, 0.34, 1)
-        : genus === 4
-          ? new THREE.Vector3(0.03, 0.32, 1)
-          : genus === 5
-            ? new THREE.Vector3(0, 0.35, 1)
-            : new THREE.Vector3(0.12, 0.31, 1);
-    return this.poseFromDirection(target, direction, this.fitDistance(1.28));
+    return this.poseFromDirection(
+      target,
+      new THREE.Vector3(0.12, 0.31, 1),
+      this.fitDistance(1.28),
+    );
   }
 
   private fitDistance(margin: number): number {
@@ -1134,7 +1096,7 @@ export class WorldScene {
       this.heatEnabled &&
       this.canvas.dataset.heatMode === "animation"
     ) {
-      const duration = this.reducedMotion ? 1 : 5200;
+      const duration = this.reducedMotion ? 180 : 4200;
       const progress = Math.min(1, (time - this.heatStartTime) / duration);
       this.applyHeat(progress);
       if (progress >= 1) {
