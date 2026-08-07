@@ -79,16 +79,16 @@ function nativeRoutePoints(
 }
 
 describe("multi-world native export", () => {
-  it("parses the exact five-world manifest with Genus 2 as default", () => {
+  it("parses the exact three-world manifest with Genus 2 as default", () => {
     const manifest = parseWorldManifest(rawManifest());
     expect(manifest.defaultGenus).toBe(2);
-    expect(SUPPORTED_GENERA).toEqual([1, 2, 3, 4, 5]);
+    expect(SUPPORTED_GENERA).toEqual([1, 2, 3]);
     expect(manifest.supportedGenera).toEqual(SUPPORTED_GENERA);
     expect(manifest.worlds.map((world) => world.genus)).toEqual(
       SUPPORTED_GENERA,
     );
     expect(new Set(manifest.worlds.map((world) => world.vertices)).size).toBe(
-      5,
+      3,
     );
     expect(manifest.worlds.every((world) => world.binaryBytes > 100_000)).toBe(
       true,
@@ -103,24 +103,20 @@ describe("multi-world native export", () => {
     const unsupported = structuredClone(rawManifest()) as {
       supportedGenera: number[];
     };
-    unsupported.supportedGenera = [1, 2, 3, 4, 6];
+    unsupported.supportedGenera = [1, 2, 4];
     expect(() => parseWorldManifest(unsupported)).toThrow(/supported genera/i);
     expect(isSupportedGenus(1)).toBe(true);
-    expect(isSupportedGenus(5)).toBe(true);
+    expect(isSupportedGenus(3)).toBe(true);
     expect(isSupportedGenus(0)).toBe(false);
-    expect(isSupportedGenus(6)).toBe(false);
+    expect(isSupportedGenus(4)).toBe(false);
   });
 
   it("derives and validates topology for every genus without grid assumptions", () => {
     const expectedCompositions = [
       "irregular-ring",
       "folded-double-loop",
-      "triangular-shared-hub",
-      "square-shared-hub",
-      "five-point-star-shared-hub",
+      "three-ring-chain",
     ] as const;
-    const expectedSmoothingPasses = [4, 4, 8, 8, 12] as const;
-    const expectedReprojectionPasses = [4, 4, 8, 8, 4] as const;
     for (const genus of SUPPORTED_GENERA) {
       const { data, metadata } = loadWorld(genus);
       expect(data.version).toBe(3);
@@ -143,15 +139,11 @@ describe("multi-world native export", () => {
         expectedCompositions[genus - 1],
       );
       expect(metadata.generator.cycleRank).toBe(genus);
-      expect(metadata.generator.smoothingPasses).toBe(
-        expectedSmoothingPasses[genus - 1],
-      );
-      expect(metadata.generator.reprojectionPasses).toBe(
-        expectedReprojectionPasses[genus - 1],
-      );
-      expect(metadata.generator.gridOffsetFractions).toEqual(
-        genus >= 3 ? [0.23, 0.37, 0.19] : [0, 0, 0],
-      );
+      expect(metadata.generator.junction).toBe("overlap-chain");
+      expect(metadata.generator.centerlineSamples).toBe(0);
+      expect(metadata.generator.smoothingPasses).toBe(4);
+      expect(metadata.generator.reprojectionPasses).toBe(4);
+      expect(metadata.generator.gridOffsetFractions).toEqual([0, 0, 0]);
       expect(metadata.heatDisplay.frameCount).toBe(data.heatFrameCount);
       expect(metadata.heatDisplay.pathSolveUsesDisplayFrames).toBe(false);
       expect(metadata.heatDisplay.timeStepMultipliers).toEqual([
@@ -377,18 +369,16 @@ describe("multi-world native export", () => {
     ).toHaveLength(1);
     expect(requests.filter((url) => url.includes("genus-2/"))).toHaveLength(2);
     expect(requests.some((url) => url.includes("genus-3/"))).toBe(false);
-    expect(requests.some((url) => url.includes("genus-4/"))).toBe(false);
-    expect(requests.some((url) => url.includes("genus-5/"))).toBe(false);
 
-    const genusFour = await repository.loadWorld(4);
-    expect(await repository.loadWorld(4)).toBe(genusFour);
-    expect(genusFour.metadata.mesh.genus).toBe(4);
-    expect(requests.filter((url) => url.includes("genus-4/"))).toHaveLength(2);
-    await expect(repository.loadWorld(5)).resolves.toMatchObject({
-      metadata: { mesh: { genus: 5 } },
-    });
-    expect(repository.isCached(5)).toBe(true);
-    expect(requests.filter((url) => url.includes("genus-5/"))).toHaveLength(2);
+    const genusThree = await repository.loadWorld(3);
+    expect(await repository.loadWorld(3)).toBe(genusThree);
+    expect(genusThree.metadata.mesh.genus).toBe(3);
+    expect(requests.filter((url) => url.includes("genus-3/"))).toHaveLength(2);
+    expect(repository.isCached(3)).toBe(true);
+
+    await expect(
+      repository.loadWorld(4 as unknown as SupportedGenus),
+    ).rejects.toThrow(/unsupported/i);
 
     await expect(repository.loadWorld(1)).rejects.toThrow(/503/);
     expect(repository.isCached(1)).toBe(false);
@@ -396,9 +386,5 @@ describe("multi-world native export", () => {
       metadata: { mesh: { genus: 1 } },
     });
     expect(repository.isCached(1)).toBe(true);
-
-    await expect(
-      repository.loadWorld(6 as unknown as SupportedGenus),
-    ).rejects.toThrow(/unsupported/i);
   });
 });

@@ -202,12 +202,9 @@ geodesic::Index landmarkVertex(const geodesic::GeneratedCurvedWorld& world) {
 
 void testMultiGenusWorldsAndAuthoredRoutes() {
   std::set<std::size_t> vertexCounts;
-  const std::array<std::string, 5> expectedCompositions{
-      "irregular-ring", "folded-double-loop", "triangular-shared-hub", "square-shared-hub",
-      "five-point-star-shared-hub"};
-  const std::array<int, 5> expectedSmoothingPasses{4, 4, 8, 8, 12};
-  const std::array<int, 5> expectedReprojectionPasses{4, 4, 8, 8, 4};
-  for (int genus = 1; genus <= 5; ++genus) {
+  const std::array<std::string, 3> expectedCompositions{"irregular-ring", "folded-double-loop",
+                                                        "three-ring-chain"};
+  for (int genus = 1; genus <= 3; ++genus) {
     geodesic::CurvedWorldOptions options;
     options.genus = genus;
     options.resolution = 40;
@@ -240,19 +237,13 @@ void testMultiGenusWorldsAndAuthoredRoutes() {
     CHECK(first.generator.cycleRank == genus);
     CHECK(first.generator.effectiveTubeRadius > 0.18);
     CHECK(first.generator.smoothMinimumRadius > 0.0);
-    CHECK(first.generator.smoothingPasses ==
-          expectedSmoothingPasses[static_cast<std::size_t>(genus - 1)]);
-    CHECK(first.generator.reprojectionPasses ==
-          expectedReprojectionPasses[static_cast<std::size_t>(genus - 1)]);
+    CHECK(first.generator.smoothingPasses == 4);
+    CHECK(first.generator.reprojectionPasses == 4);
     CHECK((first.generator.samplingMaximum - first.generator.samplingMinimum).minCoeff() > 0.0);
-    if (genus >= 3) {
-      CHECK(first.generator.junction == "shared-central-junction");
-      CHECK(first.generator.centerlineSamples == 72);
-      CHECK(first.generator.loopWidth > 0.0);
-      CHECK(first.generator.gridOffsetFractions.minCoeff() > 0.0);
-    } else {
-      CHECK(first.generator.gridOffsetFractions.isZero());
-    }
+    CHECK(first.generator.junction == "overlap-chain");
+    CHECK(first.generator.centerlineSamples == 0);
+    CHECK(first.generator.loopWidth == 0.0);
+    CHECK(first.generator.gridOffsetFractions.isZero());
 
     std::set<std::array<geodesic::Index, 3>> uniqueFaces;
     std::vector<double> angles;
@@ -368,8 +359,8 @@ void testDeterministicWebExport() {
       geodesic::exportAllCurvedWorlds(firstDirectory, options);
   const std::vector<geodesic::WebExportReport> second =
       geodesic::exportAllCurvedWorlds(secondDirectory, options);
-  CHECK(first.size() == 5U);
-  CHECK(second.size() == 5U);
+  CHECK(first.size() == 3U);
+  CHECK(second.size() == 3U);
   for (std::size_t index = 0; index < first.size(); ++index) {
     CHECK(first[index].genus == static_cast<int>(index + 1U));
     CHECK(first[index].eulerCharacteristic == 2 - 2 * first[index].genus);
@@ -393,7 +384,7 @@ void testDeterministicWebExport() {
   const std::string firstManifest = readFile(firstDirectory / "manifest.json");
   CHECK(firstManifest == readFile(secondDirectory / "manifest.json"));
   CHECK(firstManifest.find("\"defaultGenus\": 2") != std::string::npos);
-  CHECK(firstManifest.find("\"supportedGenera\": [1, 2, 3, 4, 5]") != std::string::npos);
+  CHECK(firstManifest.find("\"supportedGenera\": [1, 2, 3]") != std::string::npos);
   std::filesystem::remove_all(root);
 }
 

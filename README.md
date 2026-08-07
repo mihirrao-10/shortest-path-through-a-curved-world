@@ -1,6 +1,6 @@
 # The Shortest Path Through a Curved World
 
-A C++20 CPU implementation of the Heat Method on five native-generated closed orientable surfaces, paired with a static Three.js mathematical narrative.
+A C++20 CPU implementation of the Heat Method on three native-generated closed orientable surfaces, paired with a static Three.js mathematical narrative.
 
 - Live project: <https://mihirrao-10.github.io/shortest-path-through-a-curved-world/>
 - Method: [Crane, Weischedel, and Wardetzky, *Geodesics in Heat*](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf)
@@ -10,8 +10,8 @@ The browser does not synthesize geometry or numerical results. C++ generates and
 
 ## What is implemented
 
-- Deterministic implicit Genus 1 through Genus 5 curved worlds, with Genus 2 as the default
-- A triangular Genus 3, square Genus 4, and clear five-point-star Genus 5
+- Deterministic implicit Genus 1, Genus 2, and Genus 3 curved worlds, with Genus 2 as the default
+- The original Genus 3 composition of three adjacent rounded loops
 - Smooth thickened-loop-graph geometry extracted by marching tetrahedra with shared edge intersections
 - Restrained low-frequency radius variation and spatial warping without random vertex noise
 - An oriented halfedge triangle mesh with edge and vertex manifold validation
@@ -33,22 +33,22 @@ The browser does not synthesize geometry or numerical results. C++ generates and
 - Three.js rendering, custom orbit controls, accessible interactions, and KaTeX notation
 - Native, Vitest, and Playwright coverage
 
-The refined icosphere and planar grid remain numerical test fixtures. They are independent of the five published worlds.
+The refined icosphere and planar grid remain numerical test fixtures. They are independent of the three published worlds.
 
 ## Topology and geometry
 
-Genus counts handles. The five published worlds range from one through five handles. For each connected closed orientable triangulated world, the exporter derives
+Genus counts handles. The three published worlds range from one through three handles. For each connected closed orientable triangulated world, the exporter derives
 
     chi = V - E + F
     g = 1 - chi / 2
 
 and requires chi = 2 - 2g. The requested genus is never trusted as the topology result.
 
-Genus 1 preserves the irregular ring and Genus 2 preserves the folded double loop. Genus 3 through Genus 5 use deterministic petal loops meeting at one shared central junction. The embedded loop graph has cycle rank equal to the requested genus, and the boundary of its regular neighborhood has the same genus. The three, four, and five outward lobes give the final embeddings triangular, square, and five-point-star silhouettes without using a self-intersecting star polygon. A smooth implicit minimum joins the tubes. Marching tetrahedra extracts the zero level set on a deterministic grid and reuses each grid-edge intersection so neighboring cells share vertices.
+Each world begins as the smooth tubular neighborhood of one, two, or three adjacent rounded loops. Genus 1 preserves the irregular ring, Genus 2 preserves the folded double loop, and Genus 3 preserves the original three-circle chain. The embedded loop graph has cycle rank equal to the requested genus, and the boundary of its regular neighborhood has the same genus. A smooth implicit minimum joins neighboring tubes. Marching tetrahedra extracts the zero level set on a deterministic grid and reuses each grid-edge intersection so neighboring cells share vertices.
 
 Triangle winding is chosen from the implicit gradient. Duplicate and degenerate faces are rejected. A few tangential smoothing and level-set reprojection passes improve the surface without changing connectivity. The final mesh must be connected, boundary-free, consistently oriented, two-manifold at every edge and vertex, and positively oriented by signed volume.
 
-Low-frequency terms introduce unequal lobes, a broad ridge, a shallow basin and rim, a compressed neck, and gentle vertical displacement. Genus-specific loop radii, widths, depths, grid offsets, smoothing counts, and reprojection counts are recorded in metadata. The seed controls phases deterministically. There is no per-vertex random noise.
+Low-frequency terms introduce unequal lobes, a broad ridge, a shallow basin and rim, a compressed neck, and gentle vertical displacement. Genus-specific ring radii, spacing, and tube radii are recorded in metadata. The seed controls phases deterministically. There is no per-vertex random noise.
 
 ## Build and test
 
@@ -85,17 +85,7 @@ Generate any published genus as OBJ:
   --output double-torus.obj
 ~~~
 
-Genus values 1 through 5 are accepted. For example, generate the five-handle star world with:
-
-~~~sh
-./build/geodesic_cli generate \
-  --genus 5 \
-  --resolution 96 \
-  --tube-radius 0.30 \
-  --relief 0.16 \
-  --seed 1592594996 \
-  --output genus-5-star.obj
-~~~
+Only genus values 1, 2, and 3 are accepted.
 
 Solve a field on any supported OBJ mesh:
 
@@ -123,7 +113,7 @@ Trace a Heat Method path from a mesh vertex:
   --output route.obj
 ~~~
 
-Export one web bundle or all five:
+Export one web bundle or all three:
 
 ~~~sh
 ./build/geodesic_cli export-web --genus 2 --resolution 64 --output web/public/data/worlds/genus-2
@@ -137,7 +127,7 @@ GEODESIC_BENCHMARK_HOST="Apple M4 (10-core) MacBook Pro, 16 GB, macOS 26.5" \
   ./scripts/export-web-data.sh
 ~~~
 
-The script performs a Release build, runs native tests, creates all five exports and their manifest, validates each export through the native pipeline, benchmarks the default Genus 2 world, and copies benchmark JSON into the public data directory.
+The script performs a Release build, runs native tests, creates all three exports and their manifest, validates each export through the native pipeline, benchmarks the default Genus 2 world, and copies benchmark JSON into the public data directory.
 
 ## Heat Method convention
 
@@ -170,7 +160,7 @@ Distance is piecewise linear, so its gradient is constant within each triangle. 
 
 ## Landmarks and route problems
 
-The generator returns world-space anchors for the rescue beacon and three meaningful route starts. Genus 1 and Genus 2 retain Outer ridge, Central neck, and Basin rim labels. Higher-genus worlds use truthful labels such as Central junction, Triangle rim, Square rim, and Star rim while preserving stable route IDs. C++ searches nearby faces and maps each anchor to a valid SurfacePoint. This replaces the former rectangular torus parameter grid and works for every genus.
+The generator returns world-space anchors for the rescue beacon and three meaningful route starts: Outer ridge, Central neck, and Basin rim. C++ searches nearby faces and maps each anchor to a valid SurfacePoint. This replaces the former rectangular torus parameter grid and works for every genus.
 
 Each preset reports three quantities with different admissible domains:
 
@@ -193,12 +183,8 @@ The generated layout is:
     web/public/data/worlds/genus-2/world.meta.json
     web/public/data/worlds/genus-3/world.bin
     web/public/data/worlds/genus-3/world.meta.json
-    web/public/data/worlds/genus-4/world.bin
-    web/public/data/worlds/genus-4/world.meta.json
-    web/public/data/worlds/genus-5/world.bin
-    web/public/data/worlds/genus-5/world.meta.json
 
-Binary schema version 3 and metadata schema version 4 are documented in [data/schema.md](data/schema.md). Binary v3 is unchanged because its packed structure already supports a dynamic frame count and arbitrary manifest entries. Metadata v4 adds explicit generator-layout and heat-display records. The initial page requests only the manifest and Genus 2. Genus 1, Genus 3, Genus 4, and Genus 5 load only on selection and are cached in memory. Switching replaces one WorldScene on the same canvas without reloading the page or moving its scroll position.
+Binary schema version 3 and metadata schema version 4 are documented in [data/schema.md](data/schema.md). Binary v3 is unchanged because its packed structure already supports a dynamic frame count and arbitrary manifest entries. Metadata v4 includes explicit generator-layout and heat-display records. The initial page requests only the manifest and Genus 2. Genus 1 and Genus 3 load only on selection and are cached in memory. Switching replaces one WorldScene on the same canvas without reloading the page or moving its scroll position.
 
 The parser reconstructs edges and components from the binary triangles, verifies adjacency and winding, derives Euler characteristic and genus, checks signed volume, validates route ranges and lengths, then cross-checks metadata. Three.js receives validated native arrays only.
 
@@ -210,9 +196,9 @@ The checked-in [data/benchmarks.cpu.json](data/benchmarks.cpu.json) is the canon
 
 ## Validation
 
-Native tests cover all five genera: deterministic vertices and faces, finite positions and normals, positive face area, edge and vertex manifold structure, one component, no boundary, opposite shared-edge orientation, positive signed volume, exact Euler characteristic, recovered genus, triangle quality, operator invariants, Heat and Poisson convergence, source zero, native landmarks and routes, deterministic export, heat metadata, metadata agreement, and the complete manifest. Planar and sphere fixtures continue to test numerical machinery independently.
+Native tests cover all three genera: deterministic vertices and faces, finite positions and normals, positive face area, edge and vertex manifold structure, one component, no boundary, opposite shared-edge orientation, positive signed volume, exact Euler characteristic, recovered genus, triangle quality, operator invariants, Heat and Poisson convergence, source zero, native landmarks and routes, deterministic export, heat metadata, metadata agreement, and the complete manifest. Planar and sphere fixtures continue to test numerical machinery independently.
 
-Vitest covers all five supported values, manifest and payload parsing, derived topology, dynamic heat-frame interpolation, native path ranges, malformed data, lazy caching, fetch recovery, journey-state gates, replay, and camera input mapping. Playwright covers the opening repository link, the complete guided journey, selection of all five worlds, route commitment, Genus 2 and Genus 5 heat release, request laziness and caching, explicit route comparison, direct camera inputs, keyboard-only and reduced-motion use, WebGL and corrupt-data fallbacks, recoverable loading, screenshots, accessibility checks, and the required `1440x900`, `1280x800`, `1024x768`, `820x1180`, `430x932`, and `390x844` viewports.
+Vitest covers all three supported values, manifest and payload parsing, derived topology, dynamic heat-frame interpolation, native path ranges, malformed data, lazy caching, fetch recovery, journey-state gates, replay, and camera input mapping. Playwright covers the opening repository link, the complete guided journey, selection of all three worlds, route commitment, Genus 2 and Genus 3 heat release, request laziness and caching, explicit route comparison, direct camera inputs, keyboard-only and reduced-motion use, WebGL and corrupt-data fallbacks, recoverable loading, screenshots, accessibility checks, and the required `1440x900`, `1280x800`, `1024x768`, `820x1180`, `430x932`, and `390x844` viewports.
 
 ## Foundations and project-specific work
 

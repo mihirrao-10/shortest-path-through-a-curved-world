@@ -16,7 +16,6 @@ namespace geodesic {
 namespace {
 
 constexpr int kSurfaceImprovementPasses = 4;
-constexpr int kRosetteCenterlineSamples = 72;
 
 std::uint64_t edgeKey(Index a, Index b) {
   if (b < a) {
@@ -41,13 +40,6 @@ double seedPhase(std::uint32_t seed) {
 }
 
 struct ImplicitWorld {
-  struct LoopSegment {
-    Vec3 first{Vec3::Zero()};
-    Vec3 second{Vec3::Zero()};
-    double firstRadius{0.0};
-    double secondRadius{0.0};
-  };
-
   CurvedWorldOptions options;
   double ringRadius{0.78};
   double spacing{1.68};
@@ -55,7 +47,6 @@ struct ImplicitWorld {
   double effectiveTubeRadius{0.30};
   double phase{0.0};
   std::vector<double> centers;
-  std::vector<std::vector<LoopSegment>> rosetteLoops;
   Vec3 samplingMinimum{Vec3::Zero()};
   Vec3 samplingMaximum{Vec3::Zero()};
 
@@ -70,82 +61,23 @@ struct ImplicitWorld {
       spacing = 2.0 * ringRadius + 0.11;
       effectiveTubeRadius = options.tubeRadius;
     } else {
-      ringRadius = options.genus == 3 ? 0.80 : options.genus == 4 ? 0.77 : 0.74;
-      loopWidth = ringRadius * (options.genus == 3 ? 0.58 : options.genus == 4 ? 0.50 : 0.43);
-      spacing = 0.0;
-      effectiveTubeRadius = options.tubeRadius * (options.genus == 3   ? 0.82
-                                                  : options.genus == 4 ? 0.75
-                                                                       : 0.68);
+      // Preserve the original three adjacent rounded loops for Genus 3.
+      ringRadius = 0.59;
+      spacing = 2.0 * ringRadius + 0.10;
+      effectiveTubeRadius = options.tubeRadius * 0.88;
     }
-    if (options.genus <= 2) {
-      centers.reserve(static_cast<std::size_t>(options.genus));
-      for (int lobe = 0; lobe < options.genus; ++lobe) {
-        centers.push_back(
-            (static_cast<double>(lobe) - 0.5 * static_cast<double>(options.genus - 1)) * spacing);
-      }
-      const double margin = 0.34;
-      samplingMinimum = Vec3(centers.front() - ringRadius - effectiveTubeRadius - margin,
-                             -ringRadius - effectiveTubeRadius - margin,
-                             -effectiveTubeRadius * 1.25 - margin * 0.45);
-      samplingMaximum = Vec3(centers.back() + ringRadius + effectiveTubeRadius + margin,
-                             ringRadius + effectiveTubeRadius + margin,
-                             effectiveTubeRadius * 1.25 + margin * 0.45);
-      return;
-    }
-
-    rosetteLoops.resize(static_cast<std::size_t>(options.genus));
-    const double startAngle = 0.5 * std::numbers::pi;
-    const double phaseInfluence = 0.035 * std::sin(phase);
-    Vec3 minimum = Vec3::Constant(std::numeric_limits<double>::infinity());
-    Vec3 maximum = Vec3::Constant(-std::numeric_limits<double>::infinity());
+    centers.reserve(static_cast<std::size_t>(options.genus));
     for (int lobe = 0; lobe < options.genus; ++lobe) {
-      const double lobePhase = phase + 1.37 * static_cast<double>(lobe);
-      const double angle =
-          startAngle +
-          2.0 * std::numbers::pi * static_cast<double>(lobe) / static_cast<double>(options.genus) +
-          phaseInfluence * std::sin(0.73 * static_cast<double>(lobe) + phase);
-      const Vec3 radial(std::cos(angle), std::sin(angle), 0.0);
-      const Vec3 tangent(-std::sin(angle), std::cos(angle), 0.0);
-      const double major = ringRadius * (1.0 + 0.025 * std::sin(lobePhase));
-      const double minor = loopWidth * (1.0 + 0.035 * std::cos(0.8 * lobePhase));
-      const double tipHeight =
-          0.13 * ringRadius * std::sin(1.61 * static_cast<double>(lobe) + 0.35 * phase);
-      const double crossTilt =
-          0.10 * ringRadius * std::cos(1.17 * static_cast<double>(lobe) - 0.25 * phase);
-
-      std::array<Vec3, kRosetteCenterlineSamples> points{};
-      std::array<double, kRosetteCenterlineSamples> radii{};
-      for (int sample = 0; sample < kRosetteCenterlineSamples; ++sample) {
-        const double loopAngle = 2.0 * std::numbers::pi * static_cast<double>(sample) /
-                                 static_cast<double>(kRosetteCenterlineSamples);
-        const double cosine = std::cos(loopAngle);
-        const double sine = std::sin(loopAngle);
-        const double outwardWarp = options.relief * 0.035 * ringRadius * (1.0 + cosine) *
-                                   std::sin(2.0 * loopAngle + lobePhase);
-        points[static_cast<std::size_t>(sample)] =
-            (major * (1.0 + cosine) + outwardWarp) * radial + minor * sine * tangent +
-            Vec3(0.0, 0.0, 0.5 * tipHeight * (1.0 + cosine) + crossTilt * sine);
-        radii[static_cast<std::size_t>(sample)] =
-            effectiveTubeRadius *
-            (1.0 + options.relief * (0.085 * std::sin(loopAngle + lobePhase) +
-                                     0.035 * std::cos(2.0 * loopAngle - 0.4 * phase)));
-        minimum = minimum.cwiseMin(points[static_cast<std::size_t>(sample)] -
-                                   Vec3::Constant(radii[static_cast<std::size_t>(sample)]));
-        maximum = maximum.cwiseMax(points[static_cast<std::size_t>(sample)] +
-                                   Vec3::Constant(radii[static_cast<std::size_t>(sample)]));
-      }
-      auto& segments = rosetteLoops[static_cast<std::size_t>(lobe)];
-      segments.reserve(kRosetteCenterlineSamples);
-      for (int sample = 0; sample < kRosetteCenterlineSamples; ++sample) {
-        const std::size_t first = static_cast<std::size_t>(sample);
-        const std::size_t second =
-            static_cast<std::size_t>((sample + 1) % kRosetteCenterlineSamples);
-        segments.push_back({points[first], points[second], radii[first], radii[second]});
-      }
+      centers.push_back((static_cast<double>(lobe) - 0.5 * static_cast<double>(options.genus - 1)) *
+                        spacing);
     }
-    const Vec3 margin = Vec3::Constant(0.34);
-    samplingMinimum = minimum - margin;
-    samplingMaximum = maximum + margin;
+    const double margin = 0.34;
+    samplingMinimum = Vec3(centers.front() - ringRadius - effectiveTubeRadius - margin,
+                           -ringRadius - effectiveTubeRadius - margin,
+                           -effectiveTubeRadius * 1.25 - margin * 0.45);
+    samplingMaximum =
+        Vec3(centers.back() + ringRadius + effectiveTubeRadius + margin,
+             ringRadius + effectiveTubeRadius + margin, effectiveTubeRadius * 1.25 + margin * 0.45);
   }
 
   [[nodiscard]] double smoothMinimum(double first, double second) const {
@@ -161,27 +93,6 @@ struct ImplicitWorld {
                            0.018 * std::sin(2.1 * position.z() - phase));
     point.y() += relief * (0.038 * std::sin(0.92 * position.x() - 0.2 * phase));
     point.z() += relief * (0.030 * std::sin(0.75 * position.x() + 1.1 * position.y() + phase));
-
-    if (options.genus >= 3) {
-      double field = point.norm() - 1.06 * effectiveTubeRadius;
-      for (const auto& loop : rosetteLoops) {
-        double loopField = std::numeric_limits<double>::infinity();
-        for (const LoopSegment& segment : loop) {
-          const Vec3 direction = segment.second - segment.first;
-          const double squaredLength = direction.squaredNorm();
-          const double ratio =
-              squaredLength > 1e-18
-                  ? std::clamp((point - segment.first).dot(direction) / squaredLength, 0.0, 1.0)
-                  : 0.0;
-          const Vec3 closest = segment.first + ratio * direction;
-          const double radius =
-              segment.firstRadius + ratio * (segment.secondRadius - segment.firstRadius);
-          loopField = std::min(loopField, (point - closest).norm() - radius);
-        }
-        field = smoothMinimum(field, loopField);
-      }
-      return field;
-    }
 
     double field = std::numeric_limits<double>::infinity();
     for (int lobe = 0; lobe < options.genus; ++lobe) {
@@ -242,29 +153,23 @@ struct ImplicitWorld {
       return "irregular-ring";
     if (options.genus == 2)
       return "folded-double-loop";
-    if (options.genus == 3)
-      return "triangular-shared-hub";
-    if (options.genus == 4)
-      return "square-shared-hub";
-    return "five-point-star-shared-hub";
+    return "three-ring-chain";
   }
 
   [[nodiscard]] std::string junction() const {
-    return options.genus <= 2 ? "overlap-chain" : "shared-central-junction";
+    return "overlap-chain";
   }
 
   [[nodiscard]] Vec3 gridOffsetFractions() const {
-    return options.genus >= 3 ? Vec3(0.23, 0.37, 0.19) : Vec3::Zero();
+    return Vec3::Zero();
   }
 
   [[nodiscard]] int smoothingPasses() const {
-    if (options.genus == 5)
-      return 12;
-    return options.genus >= 3 ? 8 : kSurfaceImprovementPasses;
+    return kSurfaceImprovementPasses;
   }
 
   [[nodiscard]] int reprojectionPasses() const {
-    return options.genus == 5 ? 4 : smoothingPasses();
+    return kSurfaceImprovementPasses;
   }
 };
 
@@ -671,54 +576,6 @@ SurfacePoint mapAnchorToSurface(const TriangleMesh& mesh, const Vec3& anchor,
 }
 
 WorldLandmarks buildLandmarks(const TriangleMesh& mesh, const ImplicitWorld& field) {
-  if (field.options.genus >= 3) {
-    const std::size_t sourceLobe = 0;
-    const std::size_t farLobe =
-        static_cast<std::size_t>((field.options.genus + 1) / 2) % field.rosetteLoops.size();
-    const std::size_t rimLobe = 1U;
-    const auto outerAnchor = [&](std::size_t lobe) {
-      const Vec3 centerline = field.rosetteLoops[lobe][0].first;
-      Vec3 outward(centerline.x(), centerline.y(), 0.0);
-      if (outward.squaredNorm() < 1e-16)
-        outward = Vec3::UnitX();
-      outward.normalize();
-      return std::pair<Vec3, Vec3>{centerline + 0.82 * field.effectiveTubeRadius * outward,
-                                   outward};
-    };
-    const auto [sourceAnchor, sourceNormal] = outerAnchor(sourceLobe);
-    const auto [farAnchor, farNormal] = outerAnchor(farLobe);
-    const auto& rimSegment =
-        field.rosetteLoops[rimLobe][static_cast<std::size_t>(kRosetteCenterlineSamples / 4)];
-    const Vec3 rimAnchor = rimSegment.first + 0.82 * rimSegment.firstRadius * Vec3::UnitZ();
-
-    std::string outerLabel = "Outer ridge";
-    std::string neckLabel = "Central junction";
-    std::string rimLabel = "Triangle rim";
-    if (field.options.genus == 4) {
-      outerLabel = "Far corner";
-      rimLabel = "Square rim";
-    } else if (field.options.genus == 5) {
-      outerLabel = "Far point";
-      rimLabel = "Star rim";
-    }
-
-    WorldLandmarks landmarks;
-    landmarks.source = {"beacon", "Rescue beacon", sourceAnchor, sourceNormal, {}};
-    landmarks.routeStarts = {{{"outer-ridge", outerLabel, farAnchor, farNormal, {}},
-                              {"central-neck",
-                               neckLabel,
-                               Vec3(0.0, 0.0, -0.96 * field.effectiveTubeRadius),
-                               Vec3(0.0, 0.0, -1.0),
-                               {}},
-                              {"basin-rim", rimLabel, rimAnchor, Vec3::UnitZ(), {}}}};
-    landmarks.source.point =
-        mapAnchorToSurface(mesh, landmarks.source.anchor, landmarks.source.preferredNormal);
-    for (WorldLandmark& landmark : landmarks.routeStarts) {
-      landmark.point = mapAnchorToSurface(mesh, landmark.anchor, landmark.preferredNormal);
-    }
-    return landmarks;
-  }
-
   const double left = field.centers.front() - field.ringRadius;
   const double right = field.centers.back() + field.ringRadius;
   const double top = field.ringRadius + field.effectiveTubeRadius * 0.72;
@@ -798,8 +655,8 @@ TriangleMesh makeIcosphere(int subdivisions, double radius) {
 }
 
 GeneratedCurvedWorld generateCurvedWorld(const CurvedWorldOptions& options) {
-  if (options.genus < 1 || options.genus > 5) {
-    throw std::invalid_argument("curved-world genus must be between 1 and 5");
+  if (options.genus < 1 || options.genus > 3) {
+    throw std::invalid_argument("curved-world genus must be between 1 and 3");
   }
   if (options.resolution < 28 || options.resolution > 192 || !(options.tubeRadius > 0.18) ||
       options.tubeRadius > 0.42 || !(options.relief >= 0.0) || options.relief > 0.30 ||
@@ -855,7 +712,7 @@ GeneratedCurvedWorld generateCurvedWorld(const CurvedWorldOptions& options) {
   generator.composition = field.composition();
   generator.junction = field.junction();
   generator.cycleRank = options.genus;
-  generator.centerlineSamples = options.genus >= 3 ? kRosetteCenterlineSamples : 0;
+  generator.centerlineSamples = 0;
   generator.ringRadius = field.ringRadius;
   generator.loopWidth = field.loopWidth;
   generator.effectiveTubeRadius = field.effectiveTubeRadius;

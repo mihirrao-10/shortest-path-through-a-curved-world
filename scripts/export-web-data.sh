@@ -6,7 +6,7 @@ build_dir="${project_root}/build-native"
 worlds_dir="${project_root}/web/public/data/worlds"
 
 cmake_args=(-S "${project_root}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release)
-if command -v ninja >/dev/null 2>&1; then
+if [[ ! -f "${build_dir}/CMakeCache.txt" ]] && command -v ninja >/dev/null 2>&1; then
   cmake_args+=(-G Ninja)
 fi
 cmake "${cmake_args[@]}"

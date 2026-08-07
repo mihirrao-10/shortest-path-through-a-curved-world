@@ -9,10 +9,6 @@ The C++ exporter writes a manifest and one deterministic native bundle for each 
     web/public/data/worlds/genus-2/world.meta.json
     web/public/data/worlds/genus-3/world.bin
     web/public/data/worlds/genus-3/world.meta.json
-    web/public/data/worlds/genus-4/world.bin
-    web/public/data/worlds/genus-4/world.meta.json
-    web/public/data/worlds/genus-5/world.bin
-    web/public/data/worlds/genus-5/world.meta.json
 
 Fixed CurvedWorldOptions and seed produce byte-identical geometry, fields, route payloads, metadata, and manifest. Machine-dependent timing is kept in a separate benchmark document.
 
@@ -22,12 +18,12 @@ manifest.json has schema geodesic-world-manifest-v1 and contains:
 
 - binarySchemaVersion, exactly 3;
 - defaultGenus, exactly 2;
-- supportedGenera, exactly [1, 2, 3, 4, 5];
-- five ordered world entries.
+- supportedGenera, exactly [1, 2, 3];
+- three ordered world entries.
 
 Each entry records genus, concise and accessible labels, relative binary and metadata paths, binary byte size, vertex count, and face count. Paths are relative to the manifest directory and are safe under Vite's GitHub Pages base path.
 
-The browser loads this manifest first, then only the default Genus 2 bundle. Genus 1, Genus 3, Genus 4, and Genus 5 are fetched only on selection and cached after successful validation.
+The browser loads this manifest first, then only the default Genus 2 bundle. Genus 1 and Genus 3 are fetched only on selection and cached after successful validation.
 
 ## Binary v3
 
@@ -124,11 +120,9 @@ The generator record distinguishes the embeddings while topology remains derived
 
 - Genus 1: irregular-ring;
 - Genus 2: folded-double-loop;
-- Genus 3: triangular-shared-hub;
-- Genus 4: square-shared-hub;
-- Genus 5: five-point-star-shared-hub.
+- Genus 3: three-ring-chain.
 
-Genus 3 through Genus 5 use 72 centerline samples per deterministic petal loop and one shared central junction. Their grid offset fractions are `[0.23, 0.37, 0.19]`; Genus 1 and Genus 2 use zero offset. Genus 1 and Genus 2 use four smoothing and four reprojection passes, Genus 3 and Genus 4 use eight of each, and Genus 5 uses twelve smoothing and four reprojection passes. These choices improve triangle quality without changing connectivity. The recorded cycleRank must equal the recovered genus.
+All three worlds use analytic rounded-loop fields joined by the same smooth minimum, zero grid offset, four smoothing passes, and four reprojection passes. Genus 3 places three loops side by side in the original adjacent chain. The recorded cycleRank must equal the recovered genus.
 
 ### Heat display frames
 
@@ -204,4 +198,4 @@ Benchmark timing is deliberately separate from deterministic world metadata. It 
 
 ## Version policy
 
-Binary v3 deliberately replaces the obsolete single-torus v2 layout. Its dynamic heat-frame count and manifest-driven paths already support five worlds, so the binary schema did not change for this release. Metadata advanced from v3 to v4 because the serialized JSON gained generator-layout and heatDisplay records. Manifest v1 remains sufficient because its ordered world-entry structure did not change.
+Binary v3 deliberately replaces the obsolete single-torus v2 layout. Its dynamic heat-frame count and manifest-driven paths support all three worlds. Metadata advanced from v3 to v4 because the serialized JSON gained generator-layout and heatDisplay records. Manifest v1 remains sufficient because its ordered world-entry structure did not change.

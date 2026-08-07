@@ -1,4 +1,4 @@
-export const SUPPORTED_GENERA = [1, 2, 3, 4, 5] as const;
+export const SUPPORTED_GENERA = [1, 2, 3] as const;
 export type SupportedGenus = (typeof SUPPORTED_GENERA)[number];
 export type RoutePresetId = string;
 
@@ -54,13 +54,8 @@ export interface WorldMetadata {
     seed: number;
   };
   generator: {
-    composition:
-      | "irregular-ring"
-      | "folded-double-loop"
-      | "triangular-shared-hub"
-      | "square-shared-hub"
-      | "five-point-star-shared-hub";
-    junction: "overlap-chain" | "shared-central-junction";
+    composition: "irregular-ring" | "folded-double-loop" | "three-ring-chain";
+    junction: "overlap-chain";
     cycleRank: SupportedGenus;
     centerlineSamples: number;
     ringRadius: number;
@@ -232,9 +227,7 @@ export function isSupportedGenus(value: unknown): value is SupportedGenus {
 const EXPECTED_COMPOSITIONS = {
   1: "irregular-ring",
   2: "folded-double-loop",
-  3: "triangular-shared-hub",
-  4: "square-shared-hub",
-  5: "five-point-star-shared-hub",
+  3: "three-ring-chain",
 } as const satisfies Record<SupportedGenus, string>;
 
 function parseVector3(value: unknown, label: string): [number, number, number] {
@@ -1030,11 +1023,10 @@ export function parseWorldMetadata(
     !Number.isInteger(mesh.seed) ||
     !isRecord(generator) ||
     generator.composition !== EXPECTED_COMPOSITIONS[mesh.genus] ||
-    generator.junction !==
-      (mesh.genus <= 2 ? "overlap-chain" : "shared-central-junction") ||
+    generator.junction !== "overlap-chain" ||
     generator.cycleRank !== mesh.genus ||
     !Number.isInteger(generator.centerlineSamples) ||
-    generator.centerlineSamples !== (mesh.genus >= 3 ? 72 : 0) ||
+    generator.centerlineSamples !== 0 ||
     !isFiniteNumber(generator.ringRadius) ||
     generator.ringRadius <= 0 ||
     !isFiniteNumber(generator.loopWidth) ||
@@ -1161,10 +1153,7 @@ export function parseWorldMetadata(
   );
   if (
     gridOffsetFractions.some((fraction) => fraction < 0 || fraction >= 1) ||
-    (mesh.genus <= 2 &&
-      gridOffsetFractions.some((fraction) => fraction !== 0)) ||
-    (mesh.genus >= 3 &&
-      gridOffsetFractions.every((fraction) => fraction === 0)) ||
+    gridOffsetFractions.some((fraction) => fraction !== 0) ||
     samplingMinimum.some(
       (minimum, axis) => minimum >= samplingMaximum[axis]!,
     ) ||

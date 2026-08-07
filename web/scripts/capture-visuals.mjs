@@ -146,7 +146,7 @@ const desktopMetrics = await desktop.page.evaluate(() => ({
 console.log("desktop", JSON.stringify(desktopMetrics));
 await desktop.context.close();
 
-for (const genus of [1, 3, 4, 5]) {
+for (const genus of [1, 3]) {
   const genusPage = await readyPage({ width: 1440, height: 900 });
   await begin(genusPage.page);
   await selectGenus(genusPage.page, genus);
@@ -154,47 +154,12 @@ for (const genus of [1, 3, 4, 5]) {
     genusPage.page,
     `../docs/screenshots/genus-${genus}-desktop.png`,
   );
-  if (genus >= 3) {
+  if (genus === 3) {
     await rotateWorld(genusPage.page);
     await capture(
       genusPage.page,
       `../docs/screenshots/genus-${genus}-alternate-desktop.png`,
       100,
-    );
-  }
-  if (genus === 5) {
-    await genusPage.page.locator("#reset-view").click();
-    for (const act of [0, 1, 2]) await proceed(genusPage.page, act);
-    await genusPage.page.locator('button[data-route-id="basin-rim"]').click();
-    await proceed(genusPage.page, 3);
-    await genusPage.page.locator("#release-button").click();
-    await capture(
-      genusPage.page,
-      "../docs/screenshots/genus-5-heat-early-desktop.png",
-      120,
-    );
-    await genusPage.page.waitForFunction(
-      () =>
-        Number(document.querySelector("#world-canvas")?.dataset.heatFrame) >= 5,
-      undefined,
-      { timeout: 7_000 },
-    );
-    await capture(
-      genusPage.page,
-      "../docs/screenshots/genus-5-heat-middle-desktop.png",
-      80,
-    );
-    await genusPage.page.waitForFunction(
-      () =>
-        document.querySelector("#world-canvas")?.dataset.heatMode ===
-        "released",
-      undefined,
-      { timeout: 7_000 },
-    );
-    await capture(
-      genusPage.page,
-      "../docs/screenshots/genus-5-heat-final-desktop.png",
-      120,
     );
   }
   await genusPage.context.close();

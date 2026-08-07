@@ -28,7 +28,7 @@ The multi-handle implicit generator is project-specific computational geometry. 
 | Face-interior path tracing | Piecewise-flat surface integration | How does a path cross triangle edges without being restricted to mesh edges? | traceDistancePath in native/src/path.cpp |
 | Graph baseline | Shortest paths on graphs | What does Dijkstra solve exactly, and why is it directionally biased on a mesh? | edgeDijkstra in native/src/dijkstra.cpp |
 
-## Topology of the five worlds
+## Topology of the three worlds
 
 For a connected closed orientable triangulated surface,
 
@@ -42,8 +42,6 @@ The native extractor requests a genus, but validation derives chi and g from the
 | Genus 1 | 1 | 0 |
 | Genus 2 | 2 | -2 |
 | Genus 3 | 3 | -4 |
-| Genus 4 | 4 | -6 |
-| Genus 5 | 5 | -8 |
 
 generateCurvedWorld in native/src/procedural.cpp also verifies one connected component, no boundary edges, outward signed volume, and the requested recovered genus. TriangleMesh::validateManifold separately verifies halfedge incidence and that every vertex link is one cycle on these closed worlds.
 
@@ -53,12 +51,12 @@ Changing genus changes global topology, not just appearance. A continuous deform
 
 Read native/src/procedural.cpp as computational geometry built for this project:
 
-1. ImplicitWorld defines the preserved ring and folded double loop plus triangular, square, and five-point-star shared-junction loop layouts.
-2. The grid sampler evaluates the implicit field in a deterministic bounding box with recorded higher-genus offsets.
+1. ImplicitWorld defines one, two, or three adjacent rounded loops, preserving the original three-circle Genus 3 chain.
+2. The grid sampler evaluates the implicit field in a deterministic bounding box.
 3. Marching tetrahedra splits each cube consistently and caches grid-edge intersections.
 4. Initial winding follows the implicit gradient, then face adjacency enforces globally consistent orientation.
 5. Duplicate and degenerate triangles are removed.
-6. improveSurface applies recorded genus-specific tangential smoothing and level-set reprojection passes.
+6. improveSurface applies recorded tangential smoothing and level-set reprojection passes.
 7. The final TriangleMesh is built and its Euler characteristic, genus, components, boundary, signed volume, bounds, and quality are checked.
 8. World-space semantic anchors are mapped to nearby triangle SurfacePoints.
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A guided C++20 Heat Method journey across five native-generated worlds, from Genus 1 through Genus 5."
+      content="A guided C++20 Heat Method journey across three native-generated worlds, from Genus 1 through Genus 3."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -177,12 +177,6 @@
                   <button type="button" data-genus="3" aria-pressed="false">
                     Genus 3
                   </button>
-                  <button type="button" data-genus="4" aria-pressed="false">
-                    Genus 4
-                  </button>
-                  <button type="button" data-genus="5" aria-pressed="false">
-                    Genus 5
-                  </button>
                 </div>
               </div>
 
@@ -219,7 +213,7 @@
                   The journey opens on a folded two-handled world. You can later
                   change its topology, but the rule never changes: every valid
                   step must remain on the surface. Genus counts handles, and the
-                  selector spans one through five. For a connected, closed,
+                  selector spans one through three. For a connected, closed,
                   orientable triangulated surface,
                   <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
                   changes global topology, not merely cosmetic shape.
@@ -958,9 +952,9 @@
               <span>01</span>
               <h3>C++20 multi-genus generation</h3>
               <p>
-                A project-specific implicit field thickens a deterministic ring,
-                folded double loop, or triangular, square, and five-point-star
-                shared-junction loop graph. Marching tetrahedra reuses edge
+                A project-specific implicit field thickens one, two, or three
+                adjacent rounded loops, preserving the irregular ring and folded
+                double-loop worlds. Marching tetrahedra reuses edge
                 intersections, smooths tangentially, reprojects to the level
                 set, and verifies orientation, manifold structure, Euler
                 characteristic, triangle quality, and landmarks.

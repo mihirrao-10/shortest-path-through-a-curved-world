@@ -4,7 +4,7 @@ This guide separates the mathematical problem, the numerical implementation, the
 
 ## The 30-second explanation
 
-> I implemented the Heat Method for approximate geodesic distance on triangle meshes in C++20 and Eigen. The public site offers native-generated closed surfaces from genus one through five, with a sculptural two-handled world as the default. Genus 3 is embedded as a triangle, Genus 4 as a square, and Genus 5 as a clear five-point star. C++ extracts and validates each manifold mesh, assembles cotangent and lumped-mass operators, factors the sparse systems, solves heat and Poisson equations, computes edge Dijkstra, traces three official paths across triangle interiors, and exports the complete state. TypeScript independently validates topology and payload consistency, then Three.js renders those native results. Genus changes the world's global topology; the solver remains the same mesh-based numerical method.
+> I implemented the Heat Method for approximate geodesic distance on triangle meshes in C++20 and Eigen. The public site offers native-generated closed surfaces from genus one through three, with a sculptural two-handled world as the default and the original three-adjacent-loop world for Genus 3. C++ extracts and validates each manifold mesh, assembles cotangent and lumped-mass operators, factors the sparse systems, solves heat and Poisson equations, computes edge Dijkstra, traces three official paths across triangle interiors, and exports the complete state. TypeScript independently validates topology and payload consistency, then Three.js renders those native results. Genus changes the world's global topology; the solver remains the same mesh-based numerical method.
 
 ## The two-minute explanation
 
@@ -26,15 +26,15 @@ Pinning removes the constant nullspace. The result is shifted so the source dist
 
 A native tracer starts at a barycentric point, follows decreasing phi inside a triangle, determines which barycentric coordinate reaches zero first, crosses the corresponding halfedge twin, and repeats. Three semantic starts share one source, one field, and one Dijkstra tree. The exporter rejects any official route that misses the source, needs fallback, loops, or has implausible measurements.
 
-For geometry, C++ forms a smooth implicit neighborhood of a deterministic embedded loop graph whose cycle rank is the requested genus. Genus 1 preserves an irregular ring, Genus 2 preserves a folded double loop, and Genus 3 through Genus 5 use petal loops meeting at one shared central junction. Marching tetrahedra extracts the boundary. Shared grid-edge intersections produce indexed connectivity. Face adjacency enforces consistent orientation, mild smoothing and reprojection improve quality, and validation derives Euler characteristic and genus from the final mesh.
+For geometry, C++ forms a smooth implicit neighborhood of a deterministic embedded loop graph whose cycle rank is the requested genus. Genus 1 preserves an irregular ring, Genus 2 preserves a folded double loop, and Genus 3 preserves three adjacent rounded loops. Marching tetrahedra extracts the boundary. Shared grid-edge intersections produce indexed connectivity. Face adjacency enforces consistent orientation, mild smoothing and reprojection improve quality, and validation derives Euler characteristic and genus from the final mesh.
 
-The browser first loads only a small manifest and Genus 2. It lazily fetches Genus 1, Genus 3, Genus 4, and Genus 5 on selection, caches them, validates their triangles and metadata, and replaces one scene on the same canvas. It never constructs a fake handle or fake field.
+The browser first loads only a small manifest and Genus 2. It lazily fetches Genus 1 or Genus 3 on selection, caches them, validates their triangles and metadata, and replaces one scene on the same canvas. It never constructs a fake handle or fake field.
 
 ## Why multi-handle surfaces are a strong demonstration
 
 A sphere has simple topology and no handles. A multi-handle world makes the distinction between ambient and intrinsic distance immediately visible and creates competing route classes around different holes. It also shows that the Heat Method is a mesh algorithm rather than a formula specialized to a torus parameterization.
 
-The five selectable genera test several layers at once:
+The three selectable genera test several layers at once:
 
 - global topology changes while local triangle operators keep the same definition;
 - source and route authoring cannot rely on one rectangular parameter grid;
@@ -42,13 +42,13 @@ The five selectable genera test several layers at once:
 - data loading must be metadata-driven;
 - the same solver and tracer must remain robust as the mesh and homotopy structure change.
 
-The stronger demonstration is not that higher genus makes the linear algebra different. It is that the same genus-independent machinery works on five topologically distinct, validated surfaces.
+The stronger demonstration is not that higher genus makes the linear algebra different. It is that the same genus-independent machinery works on three topologically distinct, validated surfaces.
 
 ## Topology versus shape language
 
-Genus is the number of handles for these connected closed orientable worlds. Triangle, square, and star describe how the loop graph is embedded and how the resulting surface reads from the authored camera; those silhouettes do not determine topology by themselves. A triangular-looking surface could have the wrong number of handles, and a star outline is not permission to use a self-intersecting star polygon.
+Genus is the number of handles for these connected closed orientable worlds. The adjacent-circle composition describes how the loop graph is embedded and how the resulting surface reads from the authored camera; the silhouette alone does not determine topology.
 
-The embedded graph's cycle rank is `E_graph - V_graph + 1` because the graph is connected. Thickening that graph produces a regular neighborhood whose boundary has the same genus as the cycle rank. Genus 3, Genus 4, and Genus 5 therefore use three, four, and five petal cycles joined at one central vertex without adding a cycle between petals. The exporter still does not trust this design argument: it recovers genus from the final marching-tetrahedra mesh.
+The embedded graph's cycle rank is `E_graph - V_graph + 1` because the graph is connected. Thickening that graph produces a regular neighborhood whose boundary has the same genus as the cycle rank. Genus 3 uses three overlapping adjacent cycles. The exporter still does not trust this design argument: it recovers genus from the final marching-tetrahedra mesh.
 
 ## How topology is validated
 
@@ -178,17 +178,17 @@ Guards detect repeated faces, vanishing gradients, non-finite or invalid barycen
 The surface generator is not presented as part of Crane's DDG course.
 
 1. A deterministic implicit field describes a smooth union of rounded loop tubes.
-2. Cycle rank one through five sets the intended topology.
-3. Genus-specific centers, loop widths, lobe depths, and low-frequency modulation change composition without random vertex noise.
+2. Cycle rank one through three sets the intended topology.
+3. Genus-specific centers, spacing, ring radii, and low-frequency modulation change composition without random vertex noise.
 4. A fixed six-tetrahedra cube split extracts the zero set.
 5. A cache gives adjacent tetrahedra the same interpolated grid-edge vertex.
 6. The implicit gradient fixes outward triangle winding.
 7. Duplicate and degenerate faces are removed.
-8. Recorded genus-specific tangential smoothing and reprojection passes improve triangle placement; a deterministic grid offset avoids near-grid slivers on the denser higher-genus layouts.
+8. Recorded tangential smoothing and level-set reprojection improve triangle placement.
 9. Native topology and quality checks accept or reject the result.
 10. World-space landmark anchors are mapped to valid nearby SurfacePoints.
 
-The default Genus 2 world is designed as two unequal rounded lobes sharing a smooth central neck, so both holes read from the opening camera. The higher-genus embeddings read as a triangle, a square, and a five-point star while retaining smooth organic tubes and controlled depth.
+The default Genus 2 world is designed as two unequal rounded lobes sharing a smooth central neck, so both holes read from the opening camera. Genus 3 returns to the original three rounded loops placed side by side.
 
 ## Native route authoring and export
 
@@ -298,9 +298,9 @@ Diffusion time has units of length squared. Scaling by mean edge length squared 
 
 C++ and the browser independently build the edge set from the extracted faces, compute chi = V - E + F, verify connectedness and closure, then recover g = 1 - chi / 2. Metadata is compared with that derived result.
 
-### Why do triangle, square, and star not prove the topology?
+### Why does the three-circle silhouette not prove the topology?
 
-Those words describe an embedding and silhouette. Genus is a connectivity invariant. The generator uses a loop graph with the intended cycle rank, but acceptance still depends on recovering the exact Euler characteristic and genus from the final connected, closed, oriented manifold mesh.
+The circles describe an embedding and silhouette. Genus is a connectivity invariant. The generator uses a loop graph with the intended cycle rank, but acceptance still depends on recovering the exact Euler characteristic and genus from the final connected, closed, oriented manifold mesh.
 
 ### Why are later heat frames allowed if the method uses a short time?
 

@@ -206,20 +206,11 @@ std::vector<SurfacePoint> landmarkCandidates(const TriangleMesh& mesh,
 
 std::string routeDescription(const std::string& id, int genus) {
   if (id == "outer-ridge")
-    return genus >= 4 ? "Cross the far outer lobe toward the beacon."
-                      : "Cross the raised outer ridge from the far shoulder.";
+    return "Cross the raised outer ridge from the far shoulder.";
   if (id == "central-neck" && genus == 1)
     return "Cross the compressed inner neck of the handle.";
-  if (id == "central-neck" && genus >= 3)
-    return "Leave the shared central junction and turn onto a neighboring lobe.";
   if (id == "central-neck")
     return "Pass through the smooth shared neck between neighboring handles.";
-  if (genus == 3)
-    return "Follow the triangular rim before turning toward the beacon.";
-  if (genus == 4)
-    return "Follow one side of the square rim before crossing the shared center.";
-  if (genus == 5)
-    return "Skirt one point of the five-point star before crossing the connected center.";
   return "Skirt the shallow basin along its raised rim.";
 }
 
@@ -692,8 +683,8 @@ std::vector<WebExportReport> exportAllCurvedWorlds(const std::filesystem::path& 
                                                    const WebExportOptions& options) {
   std::filesystem::create_directories(outputDirectory);
   std::vector<WebExportReport> reports;
-  reports.reserve(5U);
-  for (int genus = 1; genus <= 5; ++genus) {
+  reports.reserve(3U);
+  for (int genus = 1; genus <= 3; ++genus) {
     WebExportOptions genusOptions = options;
     genusOptions.world.genus = genus;
     genusOptions.sourceVertex = kInvalidIndex;
@@ -707,7 +698,7 @@ std::vector<WebExportReport> exportAllCurvedWorlds(const std::filesystem::path& 
            << "  \"schema\": \"geodesic-world-manifest-v1\",\n"
            << "  \"binarySchemaVersion\": 3,\n"
            << "  \"defaultGenus\": 2,\n"
-           << "  \"supportedGenera\": [1, 2, 3, 4, 5],\n"
+           << "  \"supportedGenera\": [1, 2, 3],\n"
            << "  \"worlds\": [\n";
   for (std::size_t index = 0; index < reports.size(); ++index) {
     const WebExportReport& report = reports[index];

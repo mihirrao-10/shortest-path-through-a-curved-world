@@ -261,7 +261,7 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   await expect(page.locator(".stage-header .view-controls button")).toHaveCount(
     4,
   );
-  await expect(page.locator(".stage-footer button[data-genus]")).toHaveCount(5);
+  await expect(page.locator(".stage-footer button[data-genus]")).toHaveCount(3);
   await expect(page.locator("#compare-routes")).toBeHidden();
   await expect(page.locator("#world-instructions")).toHaveClass(/sr-only/);
   expect(
@@ -583,7 +583,7 @@ test("genus switching preserves a compatible committed route without bypassing m
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== "desktop-1280",
-    "Exercise all exported worlds once.",
+    "Exercise all three exported worlds once.",
   );
   const errors = monitorErrors(page);
   await openReady(page);
@@ -595,7 +595,7 @@ test("genus switching preserves a compatible committed route without bypassing m
   const canvas = page.locator("#world-canvas");
   const payloads = new Set<string>();
   const measurements = new Set<string>();
-  for (const genus of [2, 1, 3, 4, 5] as const) {
+  for (const genus of [2, 1, 3] as const) {
     const button = page.locator(`button[data-genus="${genus}"]`);
     if (genus !== 2) await button.click();
     await expect(page.locator("#loading")).toBeHidden();
@@ -623,19 +623,19 @@ test("genus switching preserves a compatible committed route without bypassing m
     await expect(page.locator("#residual-list dd").first()).toContainText(
       `Genus ${genus}`,
     );
-    if (genus >= 3) {
+    if (genus === 3) {
       await testInfo.attach(`genus-${genus}-authored-view`, {
         body: await canvas.screenshot(),
         contentType: "image/png",
       });
     }
   }
-  expect(payloads.size).toBe(5);
-  expect(measurements.size).toBe(5);
+  expect(payloads.size).toBe(3);
+  expect(measurements.size).toBe(3);
 
   await page.locator("#release-button").click();
   await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
-  await testInfo.attach("genus-5-heat-early", {
+  await testInfo.attach("genus-3-heat-early", {
     body: await canvas.screenshot(),
     contentType: "image/png",
   });
@@ -644,7 +644,7 @@ test("genus switching preserves a compatible committed route without bypassing m
       timeout: 7_000,
     })
     .toBeGreaterThanOrEqual(5);
-  await testInfo.attach("genus-5-heat-middle", {
+  await testInfo.attach("genus-3-heat-middle", {
     body: await canvas.screenshot(),
     contentType: "image/png",
   });
@@ -652,14 +652,14 @@ test("genus switching preserves a compatible committed route without bypassing m
     timeout: 7_000,
   });
   await expect(canvas).toHaveAttribute("data-heat-frame", "9");
-  await testInfo.attach("genus-5-heat-final", {
+  await testInfo.attach("genus-3-heat-final", {
     body: await canvas.screenshot(),
     contentType: "image/png",
   });
   expect(errors).toEqual([]);
 });
 
-test("world bundles load lazily, cache after selection, and never prefetch higher genera", async ({
+test("world bundles load lazily and cache after selection", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -679,44 +679,44 @@ test("world bundles load lazily, cache after selection, and never prefetch highe
   expect(
     worldRequests.filter((path) => path.includes("/genus-2/")),
   ).toHaveLength(2);
-  for (const genus of [1, 3, 4, 5]) {
+  for (const genus of [1, 3]) {
     expect(
       worldRequests.some((path) => path.includes(`/genus-${genus}/`)),
     ).toBe(false);
   }
 
   await begin(page);
-  await page.locator('button[data-genus="4"]').click();
+  await page.locator('button[data-genus="3"]').click();
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-topology",
-    "genus-4",
+    "genus-3",
   );
   expect(
-    worldRequests.filter((path) => path.includes("/genus-4/")),
+    worldRequests.filter((path) => path.includes("/genus-3/")),
   ).toHaveLength(2);
-  await page.locator('button[data-genus="5"]').click();
+  await page.locator('button[data-genus="1"]').click();
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-topology",
-    "genus-5",
+    "genus-1",
   );
   expect(
-    worldRequests.filter((path) => path.includes("/genus-5/")),
+    worldRequests.filter((path) => path.includes("/genus-1/")),
   ).toHaveLength(2);
-  await page.locator('button[data-genus="4"]').click();
+  await page.locator('button[data-genus="3"]').click();
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-topology",
-    "genus-4",
+    "genus-3",
   );
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-load-source",
     "cache",
   );
   expect(
-    worldRequests.filter((path) => path.includes("/genus-4/")),
+    worldRequests.filter((path) => path.includes("/genus-3/")),
   ).toHaveLength(2);
 });
 
-test("a failed higher-genus load preserves the active world and offers retry", async ({
+test("a failed alternate-genus load preserves the active world and offers retry", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -724,7 +724,7 @@ test("a failed higher-genus load preserves the active world and offers retry", a
     "Exercise recoverable world loading once.",
   );
   let failOnce = true;
-  await page.route("**/data/worlds/genus-4/world.meta.json", async (route) => {
+  await page.route("**/data/worlds/genus-3/world.meta.json", async (route) => {
     if (failOnce) {
       failOnce = false;
       await route.fulfill({ status: 503, body: "temporary failure" });
@@ -735,7 +735,7 @@ test("a failed higher-genus load preserves the active world and offers retry", a
   await openReady(page);
   await begin(page);
   const scrollBefore = await page.evaluate(() => window.scrollY);
-  await page.locator('button[data-genus="4"]').click();
+  await page.locator('button[data-genus="3"]').click();
   await expect(page.locator("#loading p")).toContainText(
     "Select it again to retry.",
   );
@@ -749,13 +749,13 @@ test("a failed higher-genus load preserves the active world and offers retry", a
   );
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
 
-  await page.locator('button[data-genus="4"]').click();
+  await page.locator('button[data-genus="3"]').click();
   await expect(page.locator("#loading")).toBeHidden();
   await expect(page.locator("#world-canvas")).toHaveAttribute(
     "data-topology",
-    "genus-4",
+    "genus-3",
   );
-  await expect(page.locator('button[data-genus="4"]')).toHaveAttribute(
+  await expect(page.locator('button[data-genus="3"]')).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -948,12 +948,7 @@ test("stage, controls, title, and active copy do not overlap at supported sizes"
   if (layout.viewport.width > 820) {
     expect(layout.stage.right).toBeLessThan(layout.title.left);
   } else {
-    const selectorRows = await page
-      .locator(".genus-selector button")
-      .evaluateAll((buttons) =>
-        buttons.map((button) => Math.round(button.getBoundingClientRect().top)),
-      );
-    expect(new Set(selectorRows).size).toBeGreaterThanOrEqual(2);
+    await expect(page.locator(".genus-selector button")).toHaveCount(3);
     expect(layout.stage.bottom).toBeLessThanOrEqual(layout.title.top + 1);
     await proceed(page, 0);
     await page.waitForTimeout(600);

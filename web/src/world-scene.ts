@@ -969,11 +969,7 @@ export class WorldScene {
     const direction =
       genus === 3
         ? new THREE.Vector3(0.08, 0.34, 1)
-        : genus === 4
-          ? new THREE.Vector3(0.03, 0.32, 1)
-          : genus === 5
-            ? new THREE.Vector3(0, 0.35, 1)
-            : new THREE.Vector3(0.12, 0.31, 1);
+        : new THREE.Vector3(0.12, 0.31, 1);
     return this.poseFromDirection(target, direction, this.fitDistance(1.28));
   }
 
