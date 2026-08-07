@@ -918,173 +918,161 @@
                     type="button"
                     data-proceed-act="9"
                   >
-                    Proceed
+                    Proceed to Under the hood
                   </button>
                 </div>
               </div>
             </section>
+
+            <section
+              id="under-the-hood"
+              class="chapter chapter--technical"
+              data-act="10"
+              data-unlocked="false"
+              aria-labelledby="under-title"
+              hidden
+              inert
+            >
+              <div class="chapter-copy technical-copy">
+                <p class="chapter-number">X</p>
+                <h2 id="under-title" class="chapter-title" tabindex="-1">
+                  Under the hood
+                </h2>
+                <p>
+                  The page is static, but its geometry and numerical fields are
+                  not browser inventions. A deterministic C++ pipeline produces
+                  the surface, solves the field, validates the routes, and
+                  writes the files rendered here.
+                </p>
+
+                <h3>C++20 multi-genus generation</h3>
+                <p>
+                  A project-specific implicit field thickens one, two, or three
+                  adjacent rounded loops, preserving the irregular ring and
+                  folded double-loop worlds. Marching tetrahedra reuses edge
+                  intersections, smooths tangentially, reprojects to the level
+                  set, and verifies orientation, manifold structure, Euler
+                  characteristic, triangle quality, and landmarks.
+                </p>
+
+                <h3>Eigen sparse solves</h3>
+                <p>
+                  Lumped areas form the mass matrix, cotangent weights form the
+                  symmetric stiffness matrix, and barycentric gradients supply
+                  facewise differential operators. Eigen runs reusable direct
+                  and iterative CPU paths.
+                </p>
+
+                <h3>Deterministic C++ export</h3>
+                <p>
+                  The exporter writes indexed geometry, adjacency, nine native
+                  heat-display states, distance, Dijkstra data, gradient
+                  samples, route presets, C++ trace measurements, topology, and
+                  solver metadata.
+                </p>
+
+                <h3>TypeScript interpretation</h3>
+                <p>
+                  TypeScript validates binary schema version 3, topology, path
+                  ranges, and measurements. The displayed green paths are C++
+                  traces. A browser tracer remains a cross-check, not the source
+                  of the displayed geometry.
+                </p>
+
+                <h3>Persistent presentation</h3>
+                <p>
+                  Three.js renders one validated world on a reusable canvas
+                  while the damped camera orbits it. KaTeX emits HTML and
+                  MathML. Both libraries and STIX Two Text are bundled into the
+                  static GitHub Pages build.
+                </p>
+
+                <h3>Numerical and browser tests</h3>
+                <p>
+                  Native tests validate topology, operators, routes, and
+                  deterministic export. Relative residuals are normalized checks
+                  of how closely each sparse system satisfies its equation.
+                  Browser tests cover journey state, camera input,
+                  accessibility, responsive layouts, and fallback behavior.
+                </p>
+
+                <h3>Exported primary solve</h3>
+                <dl id="residual-list">
+                  <div>
+                    <dt>Mesh</dt>
+                    <dd>Loading exported metadata</dd>
+                  </div>
+                  <div>
+                    <dt>Heat residual</dt>
+                    <dd>Loading exported metadata</dd>
+                  </div>
+                  <div>
+                    <dt>Poisson residual</dt>
+                    <dd>Loading exported metadata</dd>
+                  </div>
+                  <div>
+                    <dt>Encoding</dt>
+                    <dd>
+                      Binary schema v3, metadata v4, C++ paths, and nine heat
+                      frames
+                    </dd>
+                  </div>
+                </dl>
+
+                <h3>Boundaries and limitations</h3>
+                <p>
+                  The mesh discretizes a smooth surface, the Heat Method is
+                  approximate, and cotangent accuracy depends on triangle
+                  quality. Dijkstra is edge-restricted. Face tracing can fail
+                  near critical regions, although every published preset reaches
+                  the source without fallback. Distinct homotopy classes can
+                  have nearly equal lengths. Computation is CPU-only.
+                </p>
+
+                <div class="references">
+                  <h3>Primary references</h3>
+                  <ol>
+                    <li>
+                      Keenan Crane, Clarisse Weischedel, and Max Wardetzky.
+                      <a
+                        href="https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf"
+                        >“Geodesics in Heat: A New Approach to Computing
+                        Distance Based on Heat Flow.”</a
+                      >
+                      ACM Transactions on Graphics 32(5), 2013.
+                    </li>
+                    <li>
+                      Keenan Crane.
+                      <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/"
+                        >Discrete Differential Geometry course materials.</a
+                      >
+                      Carnegie Mellon University.
+                    </li>
+                  </ol>
+                </div>
+
+                <nav class="project-links" aria-label="Project documentation">
+                  <a
+                    href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
+                    >Repository</a
+                  >
+                  <a
+                    href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world/blob/main/docs/interview-guide.md"
+                    >Interview guide</a
+                  >
+                  <a
+                    href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world/blob/main/docs/course-map.md"
+                    >Course map</a
+                  >
+                </nav>
+
+                <button id="replay-journey" class="replay-button" type="button">
+                  Replay the journey <span aria-hidden="true">↺</span>
+                </button>
+              </div>
+            </section>
           </div>
         </div>
-
-        <section
-          id="under-the-hood"
-          class="under-hood chapter"
-          data-act="10"
-          data-unlocked="false"
-          aria-labelledby="under-title"
-          hidden
-          inert
-        >
-          <div class="under-intro">
-            <h2 id="under-title" class="chapter-title" tabindex="-1">
-              Under the hood
-            </h2>
-            <p>
-              The page is static, but its geometry and numerical fields are not
-              browser inventions. A deterministic C++ pipeline produces the
-              surface, solves the field, validates the routes, and writes the
-              files rendered here.
-            </p>
-          </div>
-
-          <div class="technical-grid">
-            <article>
-              <span>01</span>
-              <h3>C++20 multi-genus generation</h3>
-              <p>
-                A project-specific implicit field thickens one, two, or three
-                adjacent rounded loops, preserving the irregular ring and folded
-                double-loop worlds. Marching tetrahedra reuses edge
-                intersections, smooths tangentially, reprojects to the level
-                set, and verifies orientation, manifold structure, Euler
-                characteristic, triangle quality, and landmarks.
-              </p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Eigen sparse solves</h3>
-              <p>
-                Lumped areas form the mass matrix, cotangent weights form the
-                symmetric stiffness matrix, and barycentric gradients supply
-                facewise differential operators. Eigen runs reusable direct and
-                iterative CPU paths.
-              </p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Deterministic C++ export</h3>
-              <p>
-                The exporter writes indexed geometry, adjacency, nine native
-                heat-display states, distance, Dijkstra data, gradient samples,
-                route presets, C++ trace measurements, topology, and solver
-                metadata.
-              </p>
-            </article>
-            <article>
-              <span>04</span>
-              <h3>TypeScript interpretation</h3>
-              <p>
-                TypeScript validates binary schema version 3, topology, path
-                ranges, and measurements. The displayed green paths are C++
-                traces. A browser tracer remains a cross-check, not the source
-                of the displayed geometry.
-              </p>
-            </article>
-            <article>
-              <span>05</span>
-              <h3>Persistent presentation</h3>
-              <p>
-                Three.js renders one validated world on a reusable canvas while
-                the damped camera orbits it. KaTeX emits HTML and MathML. Both
-                libraries and STIX Two Text are bundled into the static GitHub
-                Pages build.
-              </p>
-            </article>
-            <article>
-              <span>06</span>
-              <h3>Numerical and browser tests</h3>
-              <p>
-                Native tests validate topology, operators, routes, and
-                deterministic export. Relative residuals are normalized checks
-                of how closely each sparse system satisfies its equation.
-                Browser tests cover journey state, camera input, accessibility,
-                responsive layouts, and fallback behavior.
-              </p>
-            </article>
-          </div>
-
-          <div class="implementation-notes">
-            <div>
-              <p>Exported primary solve</p>
-              <dl id="residual-list">
-                <div>
-                  <dt>Mesh</dt>
-                  <dd>Loading exported metadata</dd>
-                </div>
-                <div>
-                  <dt>Heat residual</dt>
-                  <dd>Loading exported metadata</dd>
-                </div>
-                <div>
-                  <dt>Poisson residual</dt>
-                  <dd>Loading exported metadata</dd>
-                </div>
-                <div>
-                  <dt>Encoding</dt>
-                  <dd>
-                    Binary schema v3, metadata v4, C++ paths, and nine heat
-                    frames
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            <div>
-              <p>Limitations</p>
-              <p>
-                The mesh discretizes a smooth surface, the Heat Method is
-                approximate, and cotangent accuracy depends on triangle quality.
-                Dijkstra is edge-restricted. Face tracing can fail near critical
-                regions, although every published preset reaches the source
-                without fallback. Distinct homotopy classes can have nearly
-                equal lengths. Computation is CPU-only.
-              </p>
-            </div>
-          </div>
-
-          <div class="references">
-            <h3>Primary references</h3>
-            <ol>
-              <li>
-                Keenan Crane, Clarisse Weischedel, and Max Wardetzky.
-                <a
-                  href="https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperTOG.pdf"
-                  >“Geodesics in Heat: A New Approach to Computing Distance
-                  Based on Heat Flow.”</a
-                >
-                ACM Transactions on Graphics 32(5), 2013.
-              </li>
-              <li>
-                Keenan Crane.
-                <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/"
-                  >Discrete Differential Geometry course materials.</a
-                >
-                Carnegie Mellon University.
-              </li>
-              <li>
-                <a
-                  href="https://github.com/mihirrao-10/shortest-path-through-a-curved-world"
-                  >Source, tests, benchmark methodology, and interview guide.</a
-                >
-              </li>
-            </ol>
-          </div>
-
-          <div class="journey-replay">
-            <button id="replay-journey" class="replay-button" type="button">
-              Replay the journey <span aria-hidden="true">↺</span>
-            </button>
-          </div>
-        </section>
       </main>
 
       <footer id="site-footer" hidden>

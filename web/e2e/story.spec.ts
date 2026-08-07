@@ -450,6 +450,9 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   await proceed(page, 8);
   await proceed(page, 9);
   await expect(page.locator("#under-the-hood")).toBeVisible();
+  await expect(page.locator("#story-chapters > #under-the-hood")).toHaveCount(
+    1,
+  );
   await expect(page.locator("#under-title")).toBeInViewport();
   await expect(page.locator("#site-footer")).toBeVisible();
   await expect(page.locator("#replay-journey")).toBeVisible();

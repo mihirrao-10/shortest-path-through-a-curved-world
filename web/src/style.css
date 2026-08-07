@@ -239,7 +239,6 @@ body[data-started="true"] .opening-screen {
 
 main,
 .story-layout,
-.under-hood,
 footer {
   background: var(--black);
 }
@@ -282,7 +281,9 @@ footer {
 .comparison-legend,
 .comparison-table,
 .timing-legend,
-.implementation-notes {
+.chapter-number,
+.project-links,
+#residual-list {
   font-family: var(--sans);
 }
 
@@ -753,21 +754,18 @@ em {
   margin-top: 3.25rem;
 }
 
-.distance-problems,
-.technical-grid {
+.distance-problems {
   display: grid;
   margin: 2rem 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.35rem;
 }
 
-.distance-problems article,
-.technical-grid article {
+.distance-problems article {
   min-width: 0;
 }
 
-.distance-problems article > span,
-.technical-grid article > span {
+.distance-problems article > span {
   display: block;
   margin-bottom: 0.45rem;
   color: #777;
@@ -775,8 +773,7 @@ em {
   font-size: 0.65rem;
 }
 
-.distance-problems p,
-.technical-grid p {
+.distance-problems p {
   color: #b7b7b7;
   font-size: 0.86rem;
   line-height: 1.55;
@@ -895,44 +892,26 @@ em {
   stroke-width: 1.5;
 }
 
-.under-hood.chapter {
-  display: block;
-  width: min(100% - 3rem, 78rem);
-  min-height: 0;
-  margin: 0 auto;
-  padding: clamp(6rem, 11vw, 10rem) 0 5rem;
-  scroll-margin-top: 1.5rem;
+.technical-copy {
+  max-width: 38rem;
 }
 
-.under-intro {
-  max-width: 43rem;
-  margin-bottom: 3.5rem;
-}
-
-.under-intro .chapter-title {
-  max-width: none;
-}
-
-.technical-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2.2rem 2.7rem;
-}
-
-.implementation-notes {
-  display: grid;
-  margin-top: 4rem;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-}
-
-.implementation-notes > div > p:first-child {
-  color: var(--white);
-  font-size: 0.74rem;
+.chapter-number {
+  margin: 0 0 1.05rem;
+  color: #858585;
+  font-size: 0.63rem;
   font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.technical-copy h3 {
+  margin-top: 2.2rem;
+  font-size: 1.3rem;
 }
 
 #residual-list {
-  margin: 0;
+  margin: 0 0 1.2rem;
 }
 
 #residual-list div {
@@ -953,8 +932,7 @@ em {
 }
 
 .references {
-  max-width: 50rem;
-  margin-top: 4rem;
+  max-width: 38rem;
 }
 
 .references ol {
@@ -965,10 +943,16 @@ em {
   margin-bottom: 0.75rem;
 }
 
-.journey-replay {
-  margin-top: 4rem;
-  padding-top: 2rem;
-  border-top: 1px solid #242424;
+.project-links {
+  display: flex;
+  margin: 2rem 0 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.4rem;
+  font-size: 0.7rem;
+}
+
+.chapter--technical .replay-button {
+  margin-top: 0.7rem;
 }
 
 footer {
@@ -1001,10 +985,6 @@ footer p {
 
   .stage-header {
     flex-wrap: wrap;
-  }
-
-  .technical-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1141,21 +1121,6 @@ footer p {
     grid-template-columns: 1.5rem minmax(0, 1fr);
   }
 
-  .under-hood.chapter {
-    width: calc(100% - 2rem);
-    padding-top: 6rem;
-    scroll-margin-top: 1rem;
-  }
-
-  .technical-grid,
-  .implementation-notes {
-    grid-template-columns: 1fr;
-  }
-
-  .implementation-notes {
-    gap: 2.5rem;
-  }
-
   footer {
     width: calc(100% - 2rem);
     flex-direction: column;
@@ -1222,13 +1187,12 @@ footer p {
   .skip-link,
   .chapter-proceed,
   .release-button,
-  .journey-replay {
+  .replay-button {
     display: none !important;
   }
 
   #journey-shell,
   .chapter,
-  .under-hood,
   footer {
     display: block !important;
   }
