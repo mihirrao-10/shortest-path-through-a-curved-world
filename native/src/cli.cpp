@@ -63,7 +63,7 @@ void usage() {
       << "Curved-world options:\n"
       << "  --genus 2 --resolution 64 --tube-radius 0.30 --relief 0.16\n"
       << "  --seed 1592594996\n"
-      << "Only genus 1, 2, and 3 are supported. --all exports all three plus a manifest.\n";
+      << "Genus values 1 through 5 are supported. --all exports all five plus a manifest.\n";
 }
 
 } // namespace

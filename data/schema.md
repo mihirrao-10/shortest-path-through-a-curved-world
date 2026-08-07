@@ -9,6 +9,10 @@ The C++ exporter writes a manifest and one deterministic native bundle for each 
     web/public/data/worlds/genus-2/world.meta.json
     web/public/data/worlds/genus-3/world.bin
     web/public/data/worlds/genus-3/world.meta.json
+    web/public/data/worlds/genus-4/world.bin
+    web/public/data/worlds/genus-4/world.meta.json
+    web/public/data/worlds/genus-5/world.bin
+    web/public/data/worlds/genus-5/world.meta.json
 
 Fixed CurvedWorldOptions and seed produce byte-identical geometry, fields, route payloads, metadata, and manifest. Machine-dependent timing is kept in a separate benchmark document.
 
@@ -18,12 +22,12 @@ manifest.json has schema geodesic-world-manifest-v1 and contains:
 
 - binarySchemaVersion, exactly 3;
 - defaultGenus, exactly 2;
-- supportedGenera, exactly [1, 2, 3];
-- three ordered world entries.
+- supportedGenera, exactly [1, 2, 3, 4, 5];
+- five ordered world entries.
 
 Each entry records genus, concise and accessible labels, relative binary and metadata paths, binary byte size, vertex count, and face count. Paths are relative to the manifest directory and are safe under Vite's GitHub Pages base path.
 
-The browser loads this manifest first, then only the default Genus 2 bundle. Other bundles are fetched on selection and cached after successful validation.
+The browser loads this manifest first, then only the default Genus 2 bundle. Genus 1, Genus 3, Genus 4, and Genus 5 are fetched only on selection and cached after successful validation.
 
 ## Binary v3
 
@@ -65,13 +69,16 @@ The rest of the stream is:
 
 The binary is authoritative for rendered geometry, topology, fields, heat frames, vector samples, Dijkstra predecessors, and official Heat Method polylines.
 
-## Metadata v3
+The public release contains nine ordered frames. The binary parser remains dynamic and validates any positive frame count supplied by a compatible exporter.
 
-world.meta.json has schema geodesic-world-v3 and contains:
+## Metadata v4
+
+world.meta.json has schema geodesic-world-v4 and contains:
 
 - title and accessibleLabel;
 - mesh generator kind implicit-thickened-loop-graph;
 - requested genus, extraction resolution, tube radius, relief, and deterministic seed;
+- generator composition, junction kind, cycle rank, loop dimensions, effective tube and smooth-min radii, deterministic grid offset, smoothing and reprojection counts, and sampling bounds;
 - vertex, edge, and face counts;
 - measured center and bounding radius;
 - source vertex;
@@ -79,6 +86,7 @@ world.meta.json has schema geodesic-world-v3 and contains:
 - topology;
 - mesh-quality statistics;
 - mean edge length, Heat Method time step, sign convention, boundary policy, and heat encoding;
+- an explicit heatDisplay record with dynamic frame count, ordered time-step multipliers, exact frame times, fixed log-display range, native route-start coverage threshold and minimum, allRouteStartsReached set to true, and pathSolveUsesDisplayFrames set to false;
 - heat and Poisson relative residuals and zero-gradient face count;
 - three dynamic route presets;
 - native solver language, library, precision, and factorization descriptions;
@@ -108,7 +116,27 @@ A SurfacePoint stores:
 - face, a valid triangle index;
 - barycentric, three finite weights in [0, 1] whose sum is one.
 
-The source landmark and all route starts use this genus-independent representation. No toroidal parameter coordinates or rectangular grid indices are part of schema v3.
+The source landmark and all route starts use this genus-independent representation. No toroidal parameter coordinates or rectangular grid indices are part of metadata v4.
+
+### Generator layouts
+
+The generator record distinguishes the embeddings while topology remains derived from the final mesh:
+
+- Genus 1: irregular-ring;
+- Genus 2: folded-double-loop;
+- Genus 3: triangular-shared-hub;
+- Genus 4: square-shared-hub;
+- Genus 5: five-point-star-shared-hub.
+
+Genus 3 through Genus 5 use 72 centerline samples per deterministic petal loop and one shared central junction. Their grid offset fractions are `[0.23, 0.37, 0.19]`; Genus 1 and Genus 2 use zero offset. Genus 1 and Genus 2 use four smoothing and four reprojection passes, Genus 3 and Genus 4 use eight of each, and Genus 5 uses twelve smoothing and four reprojection passes. These choices improve triangle quality without changing connectivity. The recorded cycleRank must equal the recovered genus.
+
+### Heat display frames
+
+The official Heat Method distance and route use `t = h^2`, stored as heatMethodTimeStep. The nine visible diffusion frames use C++ solves at multipliers
+
+    [0.18, 0.45, 1, 2.5, 7, 22, 70, 260, 1200]
+
+of that time scale. Exact per-world frame times are stored both in binary v3 and in metadata v4. Multipliers greater than one are visualization diffusion frames only. They make later surface propagation visible and never alter the distance solve, facewise direction field, Poisson reconstruction, or official path. Log heat is normalized against a fixed fourteen-decade range, so later warmth is comparable to an explicit numerical floor rather than each frame's moving minimum. C++ rejects an export unless the final normalized frame reaches every authored route start by at least the recorded threshold; TypeScript rederives that minimum from the quantized binary. TypeScript may linearly interpolate adjacent native frames.
 
 ### Route presets
 
@@ -176,4 +204,4 @@ Benchmark timing is deliberately separate from deterministic world metadata. It 
 
 ## Version policy
 
-Schema v3 deliberately replaces the obsolete single-torus v2 layout. There is no compatibility parser because the checked-in site and generated assets advance together, and retaining it would preserve incorrect fixed-grid and genus-one assumptions.
+Binary v3 deliberately replaces the obsolete single-torus v2 layout. Its dynamic heat-frame count and manifest-driven paths already support five worlds, so the binary schema did not change for this release. Metadata advanced from v3 to v4 because the serialized JSON gained generator-layout and heatDisplay records. Manifest v1 remains sufficient because its ordered world-entry structure did not change.

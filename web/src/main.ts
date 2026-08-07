@@ -14,6 +14,7 @@ import {
 } from "./journey-state";
 import "./style.css";
 import {
+  isSupportedGenus,
   WorldDataRepository,
   type RoutePreset,
   type RoutePresetId,
@@ -111,6 +112,7 @@ function fallbackCaption(
   genus: SupportedGenus,
   state: JourneyState,
   route: RoutePreset | undefined,
+  heatFrameCount: number,
 ): string {
   if (state.compareMode) {
     return "Comparison mode lists all three exported Heat Method traces and measurements.";
@@ -124,8 +126,8 @@ function fallbackCaption(
     "Edge Dijkstra is exact only on the mesh-edge graph.",
     "Select an exported start to reveal its three measured lengths.",
     state.heatReleased
-      ? "All six exported heat states have completed."
-      : "The beacon is ready to release six exported heat states.",
+      ? `All ${heatFrameCount} exported heat states have completed.`
+      : `The beacon is ready to release ${heatFrameCount} exported heat states.`,
     "The exported facewise directions point away from the source.",
     "The equations define surface length and reconstruct a distance field.",
     "The comparison table uses three validated C++-exported traces.",
@@ -211,6 +213,9 @@ async function start(): Promise<void> {
 
   const activePreset = (): RoutePreset | undefined =>
     journey.routeSelected ? presetById.get(journey.routeSelected) : undefined;
+
+  const activeHeatFrameCount = (): number =>
+    activeBundle?.data.heatFrameCount ?? 9;
 
   const announce = (message: string): void => {
     announcer.textContent = "";
@@ -314,13 +319,12 @@ async function start(): Promise<void> {
     releaseButton.disabled = journey.heatAnimating || journey.heatReleased;
     if (journey.heatReleased) {
       releaseButton.textContent = "Heat released";
-      heatStatus.textContent =
-        "All six exported heat states are complete. The final state remains visible.";
+      heatStatus.textContent = `All ${activeHeatFrameCount()} exported heat states are complete. The final state remains visible.`;
     } else if (journey.heatAnimating) {
       releaseButton.textContent = "Heat spreading";
     } else {
       releaseButton.textContent = "Release heat";
-      heatStatus.textContent = "Six exported diffusion states are ready.";
+      heatStatus.textContent = `${activeHeatFrameCount()} exported diffusion states are ready.`;
     }
   };
 
@@ -331,7 +335,12 @@ async function start(): Promise<void> {
     fallback.dataset.routeLocked = String(journey.routeLocked);
     fallback.dataset.heatReleased = String(journey.heatReleased);
     fallback.dataset.comparison = String(journey.compareMode);
-    caption.textContent = fallbackCaption(activeGenus, journey, activePreset());
+    caption.textContent = fallbackCaption(
+      activeGenus,
+      journey,
+      activePreset(),
+      activeHeatFrameCount(),
+    );
   };
 
   const syncScene = (): void => {
@@ -487,7 +496,8 @@ async function start(): Promise<void> {
         if (journey.routeLocked) return;
         dispatch({ type: "SELECT_ROUTE", routeId: preset.id });
         caption.textContent =
-          worldScene?.caption ?? fallbackCaption(activeGenus, journey, preset);
+          worldScene?.caption ??
+          fallbackCaption(activeGenus, journey, preset, activeHeatFrameCount());
       });
       routeButtonsContainer.append(button);
 
@@ -535,7 +545,7 @@ async function start(): Promise<void> {
     worldScene = undefined;
     if (!webglCapable) {
       showFallback(
-        "WebGL is unavailable. The exported measurements, guided story, and mathematics remain fully accessible.",
+        "WebGL is unavailable. Geometry and measurements still come from the native C++ pipeline; the guided story and mathematics remain fully accessible.",
       );
       return;
     }
@@ -570,7 +580,7 @@ async function start(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
       showFallback(
-        `The WebGL view could not start (${message}). The exported measurements, guided story, and mathematics remain available.`,
+        `The WebGL view could not start (${message}). Geometry and measurements still come from the native C++ pipeline; the guided story and mathematics remain available.`,
       );
     }
   };
@@ -617,6 +627,11 @@ async function start(): Promise<void> {
       loading.hidden = true;
       setGenusControls(genus, false);
       window.scrollTo({ top: preservedScroll, behavior: "auto" });
+      if (!initial) {
+        announce(
+          `Genus ${genus} is active. ${bundle.metadata.accessibleLabel}.`,
+        );
+      }
       syncScene();
       return true;
     } catch (error) {
@@ -626,7 +641,7 @@ async function start(): Promise<void> {
           `The exported world data could not load (${message}). The written explanation and mathematics remain available.`,
         );
       } else {
-        loadingCopy.textContent = `Genus ${genus} could not load: ${message}`;
+        loadingCopy.textContent = `Genus ${genus} could not load: ${message}. Select it again to retry.`;
         window.setTimeout(() => {
           loading.hidden = true;
         }, 2600);
@@ -677,19 +692,22 @@ async function start(): Promise<void> {
 
   const completeFallbackHeat = (): void => {
     clearFallbackHeat();
-    const frameDelay = reducedMotion ? 28 : 620;
-    for (let frame = 1; frame <= 6; frame += 1) {
-      const timer = window.setTimeout(
-        () => {
-          fallbackHeatTimers.delete(timer);
-          fallback.dataset.heatFrame = String(frame);
-          heatStatus.textContent = `Heat state ${frame} of 6: exported warmth is spreading across the fallback view.`;
-          if (frame === 6) dispatch({ type: "COMPLETE_HEAT" });
-        },
-        frameDelay * (frame - 1),
-      );
+    const frameCount = activeHeatFrameCount();
+    const frames = reducedMotion
+      ? [1, Math.ceil(frameCount / 2), frameCount].filter(
+          (frame, index, values) => values.indexOf(frame) === index,
+        )
+      : Array.from({ length: frameCount }, (_, index) => index + 1);
+    const frameDelay = reducedMotion ? 36 : 650;
+    frames.forEach((frame, frameIndex) => {
+      const timer = window.setTimeout(() => {
+        fallbackHeatTimers.delete(timer);
+        fallback.dataset.heatFrame = String(frame);
+        heatStatus.textContent = `Heat state ${frame} of ${frameCount}: exported warmth is spreading across the fallback view.`;
+        if (frame === frameCount) dispatch({ type: "COMPLETE_HEAT" });
+      }, frameDelay * frameIndex);
       fallbackHeatTimers.add(timer);
-    }
+    });
   };
 
   const replay = (): void => {
@@ -702,7 +720,12 @@ async function start(): Promise<void> {
     clearHash();
     window.scrollTo({ top: 0, behavior: "auto" });
     renderJourney();
-    caption.textContent = fallbackCaption(activeGenus, journey, undefined);
+    caption.textContent = fallbackCaption(
+      activeGenus,
+      journey,
+      undefined,
+      activeHeatFrameCount(),
+    );
     if (activeGenus !== defaultGenus) {
       markPreparing("Restoring the default curved world");
       void switchWorld(defaultGenus).finally(markReady);
@@ -772,7 +795,7 @@ async function start(): Promise<void> {
   genusButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const genus = Number(button.dataset.genus);
-      if (genus === 1 || genus === 2 || genus === 3) {
+      if (isSupportedGenus(genus)) {
         void switchWorld(genus);
       }
     });

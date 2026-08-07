@@ -123,9 +123,47 @@ button:disabled {
   align-items: center;
 }
 
+.opening-repository-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.62rem 0.72rem;
+  align-items: center;
+  gap: 0.48rem;
+  color: #b8b8b8;
+  font-family: var(--sans);
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  line-height: 1;
+  text-decoration-color: #555;
+  transition:
+    color 150ms ease,
+    text-decoration-color 150ms ease;
+}
+
+.opening-repository-link svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.opening-repository-link:hover {
+  color: var(--white);
+  text-decoration-color: var(--white);
+}
+
 .opening-screen .chapter-title {
   max-width: 24ch;
-  margin-bottom: 2.1rem;
+  margin-bottom: 0.8rem;
+}
+
+.opening-screen__premise {
+  max-width: 34rem;
+  margin: 0 0 1.9rem;
+  color: #888;
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .start-button,
@@ -1060,6 +1098,11 @@ footer p {
     flex: 1 1 100%;
   }
 
+  .genus-selector button {
+    min-width: calc(33.333% - 0.25rem);
+    flex: 1 1 calc(33.333% - 0.25rem);
+  }
+
   .chapter {
     min-height: 78svh;
     padding: 4rem 0 5rem;
@@ -1137,10 +1180,6 @@ footer p {
 
   .view-controls button {
     min-width: calc(50% - 0.2rem);
-  }
-
-  .genus-selector button {
-    min-width: calc(33.333% - 0.25rem);
   }
 
   .scene-caption {

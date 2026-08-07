@@ -21,7 +21,7 @@ void writePathObj(const std::vector<Vec3>& points, const std::filesystem::path& 
 struct WebExportOptions {
   CurvedWorldOptions world{};
   Index sourceVertex{kInvalidIndex};
-  std::vector<double> heatTimeMultipliers{0.25, 1.0, 4.0, 16.0, 64.0, 256.0};
+  std::vector<double> heatTimeMultipliers{0.18, 0.45, 1.0, 2.5, 7.0, 22.0, 70.0, 260.0, 1200.0};
 };
 
 struct WebRoutePreset {
@@ -58,6 +58,7 @@ struct WebExportReport {
   double poissonResidual{0.0};
   double preprocessingMilliseconds{0.0};
   double queryMilliseconds{0.0};
+  double minimumFinalRouteStartNormalizedHeat{0.0};
   std::vector<WebRoutePreset> routePresets;
 };
 

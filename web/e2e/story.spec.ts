@@ -188,7 +188,30 @@ test("a fresh visit is a true locked opening at every viewport", async ({
     }),
   ).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  const repositoryLink = page.getByRole("link", {
+    name: "Open The Shortest Path Through a Curved World on GitHub",
+  });
+  await expect(repositoryLink).toBeVisible();
+  await expect(repositoryLink).toHaveAttribute(
+    "href",
+    "https://github.com/mihirrao-10/shortest-path-through-a-curved-world",
+  );
+  await expect(repositoryLink).toHaveAttribute("target", "_blank");
+  await expect(repositoryLink).toHaveAttribute(
+    "rel",
+    /\bnoopener\b.*\bnoreferrer\b/,
+  );
+  await expect(repositoryLink.locator("svg")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  await repositoryLink.focus();
+  await expect(repositoryLink).toBeFocused();
+  await expect(page.locator(".opening-screen__premise")).toHaveText(
+    "A beacon is visible across a world you are not allowed to leave.",
+  );
   await expect(page.locator("body > *:visible")).toHaveCount(1);
+  await page.locator("#start-button").focus();
   await expect(page.locator("#start-button")).toBeFocused();
   expect(new URL(page.url()).hash).toBe("");
   expect(
@@ -238,7 +261,7 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   await expect(page.locator(".stage-header .view-controls button")).toHaveCount(
     4,
   );
-  await expect(page.locator(".stage-footer button[data-genus]")).toHaveCount(3);
+  await expect(page.locator(".stage-footer button[data-genus]")).toHaveCount(5);
   await expect(page.locator("#compare-routes")).toBeHidden();
   await expect(page.locator("#world-instructions")).toHaveClass(/sr-only/);
   expect(
@@ -388,7 +411,7 @@ test("the complete guided journey unlocks one chapter at a time", async ({
     await page.evaluate(
       () => (window as Window & { __heatFrames?: string[] }).__heatFrames,
     ),
-  ).toEqual(["1", "2", "3", "4", "5", "6"]);
+  ).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
   await expect(page.locator("#release-button")).toBeDisabled();
   await expect(page.locator("#release-button")).toHaveText("Heat released");
   await expect(page.locator("#heat-proceed")).toBeEnabled();
@@ -572,7 +595,7 @@ test("genus switching preserves a compatible committed route without bypassing m
   const canvas = page.locator("#world-canvas");
   const payloads = new Set<string>();
   const measurements = new Set<string>();
-  for (const genus of [2, 1, 3] as const) {
+  for (const genus of [2, 1, 3, 4, 5] as const) {
     const button = page.locator(`button[data-genus="${genus}"]`);
     if (genus !== 2) await button.click();
     await expect(page.locator("#loading")).toBeHidden();
@@ -584,6 +607,7 @@ test("genus switching preserves a compatible committed route without bypassing m
     );
     await expect(canvas).toHaveAttribute("data-active-route", "basin-rim");
     await expect(canvas).toHaveAttribute("data-route-locked", "true");
+    await expect(canvas).toHaveAttribute("data-active-scenes", "1");
     await expect(page.locator("body")).toHaveAttribute(
       "data-max-unlocked-act",
       "4",
@@ -599,10 +623,142 @@ test("genus switching preserves a compatible committed route without bypassing m
     await expect(page.locator("#residual-list dd").first()).toContainText(
       `Genus ${genus}`,
     );
+    if (genus >= 3) {
+      await testInfo.attach(`genus-${genus}-authored-view`, {
+        body: await canvas.screenshot(),
+        contentType: "image/png",
+      });
+    }
   }
-  expect(payloads.size).toBe(3);
-  expect(measurements.size).toBe(3);
+  expect(payloads.size).toBe(5);
+  expect(measurements.size).toBe(5);
+
+  await page.locator("#release-button").click();
+  await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
+  await testInfo.attach("genus-5-heat-early", {
+    body: await canvas.screenshot(),
+    contentType: "image/png",
+  });
+  await expect
+    .poll(() => numericAttribute(canvas, "data-heat-frame"), {
+      timeout: 7_000,
+    })
+    .toBeGreaterThanOrEqual(5);
+  await testInfo.attach("genus-5-heat-middle", {
+    body: await canvas.screenshot(),
+    contentType: "image/png",
+  });
+  await expect(canvas).toHaveAttribute("data-heat-mode", "released", {
+    timeout: 7_000,
+  });
+  await expect(canvas).toHaveAttribute("data-heat-frame", "9");
+  await testInfo.attach("genus-5-heat-final", {
+    body: await canvas.screenshot(),
+    contentType: "image/png",
+  });
   expect(errors).toEqual([]);
+});
+
+test("world bundles load lazily, cache after selection, and never prefetch higher genera", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Inspect the production request contract once.",
+  );
+  const worldRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.includes("/data/worlds/")) worldRequests.push(pathname);
+  });
+
+  await openReady(page);
+  expect(
+    worldRequests.filter((path) => path.endsWith("manifest.json")),
+  ).toHaveLength(1);
+  expect(
+    worldRequests.filter((path) => path.includes("/genus-2/")),
+  ).toHaveLength(2);
+  for (const genus of [1, 3, 4, 5]) {
+    expect(
+      worldRequests.some((path) => path.includes(`/genus-${genus}/`)),
+    ).toBe(false);
+  }
+
+  await begin(page);
+  await page.locator('button[data-genus="4"]').click();
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-topology",
+    "genus-4",
+  );
+  expect(
+    worldRequests.filter((path) => path.includes("/genus-4/")),
+  ).toHaveLength(2);
+  await page.locator('button[data-genus="5"]').click();
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-topology",
+    "genus-5",
+  );
+  expect(
+    worldRequests.filter((path) => path.includes("/genus-5/")),
+  ).toHaveLength(2);
+  await page.locator('button[data-genus="4"]').click();
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-topology",
+    "genus-4",
+  );
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-load-source",
+    "cache",
+  );
+  expect(
+    worldRequests.filter((path) => path.includes("/genus-4/")),
+  ).toHaveLength(2);
+});
+
+test("a failed higher-genus load preserves the active world and offers retry", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet-1024",
+    "Exercise recoverable world loading once.",
+  );
+  let failOnce = true;
+  await page.route("**/data/worlds/genus-4/world.meta.json", async (route) => {
+    if (failOnce) {
+      failOnce = false;
+      await route.fulfill({ status: 503, body: "temporary failure" });
+    } else {
+      await route.continue();
+    }
+  });
+  await openReady(page);
+  await begin(page);
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await page.locator('button[data-genus="4"]').click();
+  await expect(page.locator("#loading p")).toContainText(
+    "Select it again to retry.",
+  );
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-topology",
+    "genus-2",
+  );
+  await expect(page.locator('button[data-genus="2"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+
+  await page.locator('button[data-genus="4"]').click();
+  await expect(page.locator("#loading")).toBeHidden();
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-topology",
+    "genus-4",
+  );
+  await expect(page.locator('button[data-genus="4"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 test("keyboard-only and reduced-motion users can complete and replay the journey", async ({
@@ -653,6 +809,10 @@ test("keyboard-only and reduced-motion users can complete and replay the journey
     "data-auto-orbit",
     "false",
   );
+  await expect(page.locator("#world-canvas")).toHaveAttribute(
+    "data-heat-frame",
+    "9",
+  );
 
   for (const act of [4, 5, 6, 7, 8, 9]) {
     const button = page.locator(`[data-proceed-act="${act}"]`);
@@ -677,7 +837,7 @@ test("the WebGL fallback follows Start, route, heat, compare, and replay rules",
   page,
 }, testInfo) => {
   test.skip(
-    testInfo.project.name !== "mobile-320",
+    testInfo.project.name !== "mobile-430",
     "Exercise the complete fallback once.",
   );
   await page.addInitScript(() => {
@@ -697,6 +857,9 @@ test("the WebGL fallback follows Start, route, heat, compare, and replay rules",
   await expect(page.locator("body")).toHaveAttribute("data-webgl", "fallback");
   await expect(page.locator("#world-canvas")).toBeHidden();
   await expect(page.locator("#webgl-fallback")).toBeVisible();
+  await expect(page.locator("#webgl-fallback")).toContainText(
+    "native C++ pipeline",
+  );
   await expectBlackSurface(page, "#webgl-fallback");
 
   await unlockRouteChoice(page);
@@ -714,11 +877,11 @@ test("the WebGL fallback follows Start, route, heat, compare, and replay rules",
   await expect(page.locator("body")).toHaveAttribute(
     "data-heat-released",
     "true",
-    { timeout: 5_000 },
+    { timeout: 7_000 },
   );
   await expect(page.locator("#webgl-fallback")).toHaveAttribute(
     "data-heat-frame",
-    "6",
+    "9",
   );
   for (const act of [4, 5, 6]) await proceed(page, act);
   await page.locator("#compare-routes").click();
@@ -785,6 +948,12 @@ test("stage, controls, title, and active copy do not overlap at supported sizes"
   if (layout.viewport.width > 820) {
     expect(layout.stage.right).toBeLessThan(layout.title.left);
   } else {
+    const selectorRows = await page
+      .locator(".genus-selector button")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => Math.round(button.getBoundingClientRect().top)),
+      );
+    expect(new Set(selectorRows).size).toBeGreaterThanOrEqual(2);
     expect(layout.stage.bottom).toBeLessThanOrEqual(layout.title.top + 1);
     await proceed(page, 0);
     await page.waitForTimeout(600);
@@ -808,7 +977,7 @@ test("corrupt native data still opens a dark written fallback", async ({
   page,
 }, testInfo) => {
   test.skip(
-    testInfo.project.name !== "mobile-375",
+    testInfo.project.name !== "tablet-820",
     "Exercise data failure recovery once.",
   );
   await page.route("**/data/worlds/genus-2/world.bin", (route) =>

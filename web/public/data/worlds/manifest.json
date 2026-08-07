@@ -2,10 +2,12 @@
   "schema": "geodesic-world-manifest-v1",
   "binarySchemaVersion": 3,
   "defaultGenus": 2,
-  "supportedGenera": [1, 2, 3],
+  "supportedGenera": [1, 2, 3, 4, 5],
   "worlds": [
-    {"genus": 1, "label": "Genus 1", "accessibleLabel": "Genus 1 closed orientable surface with 1 handle", "binary": "genus-1/world.bin", "metadata": "genus-1/world.meta.json", "binaryBytes": 2034912, "vertices": 21042, "faces": 42084},
-    {"genus": 2, "label": "Genus 2", "accessibleLabel": "Genus 2 closed orientable surface with 2 handles", "binary": "genus-2/world.bin", "metadata": "genus-2/world.meta.json", "binaryBytes": 1435480, "vertices": 14790, "faces": 29584},
-    {"genus": 3, "label": "Genus 3", "accessibleLabel": "Genus 3 closed orientable surface with 3 handles", "binary": "genus-3/world.bin", "metadata": "genus-3/world.meta.json", "binaryBytes": 1116940, "vertices": 11466, "faces": 22940}
+    {"genus": 1, "label": "Genus 1", "accessibleLabel": "Genus 1 closed orientable surface with 1 handle", "binary": "genus-1/world.bin", "metadata": "genus-1/world.meta.json", "binaryBytes": 2161236, "vertices": 21042, "faces": 42084},
+    {"genus": 2, "label": "Genus 2", "accessibleLabel": "Genus 2 closed orientable surface with 2 handles", "binary": "genus-2/world.bin", "metadata": "genus-2/world.meta.json", "binaryBytes": 1524292, "vertices": 14790, "faces": 29584},
+    {"genus": 3, "label": "Genus 3", "accessibleLabel": "Genus 3 closed orientable surface with 3 handles", "binary": "genus-3/world.bin", "metadata": "genus-3/world.meta.json", "binaryBytes": 1777788, "vertices": 17288, "faces": 34584},
+    {"genus": 4, "label": "Genus 4", "accessibleLabel": "Genus 4 closed orientable surface with 4 handles", "binary": "genus-4/world.bin", "metadata": "genus-4/world.meta.json", "binaryBytes": 1680896, "vertices": 16326, "faces": 32664},
+    {"genus": 5, "label": "Genus 5", "accessibleLabel": "Genus 5 closed orientable surface with 5 handles", "binary": "genus-5/world.bin", "metadata": "genus-5/world.meta.json", "binaryBytes": 1885656, "vertices": 18344, "faces": 36704}
   ]
 }

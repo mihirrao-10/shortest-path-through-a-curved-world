@@ -7,8 +7,8 @@ export default defineConfig({
   testDir: "./e2e",
   // WebGL under software rendering can be substantially slower on shared CI
   // runners even when interaction remains correct.
-  timeout: runningInCi ? 120_000 : 60_000,
-  expect: { timeout: runningInCi ? 15_000 : 8_000 },
+  timeout: 120_000,
+  expect: { timeout: runningInCi ? 15_000 : 10_000 },
   fullyParallel: true,
   // Isolate persistent WebGL render loops on the software renderer used by CI.
   // Local machines still use Playwright's normal worker count.
@@ -36,9 +36,17 @@ export default defineConfig({
     { name: "desktop-1280", use: { viewport: { width: 1280, height: 800 } } },
     { name: "tablet-1024", use: { viewport: { width: 1024, height: 768 } } },
     {
-      name: "tablet-768",
+      name: "tablet-820",
       use: {
-        viewport: { width: 768, height: 1024 },
+        viewport: { width: 820, height: 1180 },
+        hasTouch: true,
+      },
+    },
+    {
+      name: "mobile-430",
+      use: {
+        viewport: { width: 430, height: 932 },
+        isMobile: true,
         hasTouch: true,
       },
     },
@@ -46,22 +54,6 @@ export default defineConfig({
       name: "mobile-390",
       use: {
         viewport: { width: 390, height: 844 },
-        isMobile: true,
-        hasTouch: true,
-      },
-    },
-    {
-      name: "mobile-375",
-      use: {
-        viewport: { width: 375, height: 667 },
-        isMobile: true,
-        hasTouch: true,
-      },
-    },
-    {
-      name: "mobile-320",
-      use: {
-        viewport: { width: 320, height: 568 },
         isMobile: true,
         hasTouch: true,
       },

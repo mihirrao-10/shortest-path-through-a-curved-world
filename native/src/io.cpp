@@ -18,6 +18,9 @@
 namespace geodesic {
 namespace {
 
+constexpr double kHeatDisplayFloorRatio = 1e-14;
+constexpr double kRouteStartReachThreshold = 0.08;
+
 Index parseObjIndex(const std::string& token, std::size_t vertexCount) {
   const std::size_t slash = token.find('/');
   const std::string position = token.substr(0, slash);
@@ -203,11 +206,20 @@ std::vector<SurfacePoint> landmarkCandidates(const TriangleMesh& mesh,
 
 std::string routeDescription(const std::string& id, int genus) {
   if (id == "outer-ridge")
-    return "Cross the raised outer ridge from the far shoulder.";
+    return genus >= 4 ? "Cross the far outer lobe toward the beacon."
+                      : "Cross the raised outer ridge from the far shoulder.";
   if (id == "central-neck" && genus == 1)
     return "Cross the compressed inner neck of the handle.";
+  if (id == "central-neck" && genus >= 3)
+    return "Leave the shared central junction and turn onto a neighboring lobe.";
   if (id == "central-neck")
     return "Pass through the smooth shared neck between neighboring handles.";
+  if (genus == 3)
+    return "Follow the triangular rim before turning toward the beacon.";
+  if (genus == 4)
+    return "Follow one side of the square rim before crossing the shared center.";
+  if (genus == 5)
+    return "Skirt one point of the five-point star before crossing the connected center.";
   return "Skirt the shallow basin along its raised rim.";
 }
 
@@ -435,14 +447,37 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
     Vector frame = solver.solveHeatAtTime(source, time);
     const double maximum = std::max(frame.maxCoeff(), 1e-300);
     Vector logFrame(frame.size());
-    const double floor = maximum * 1e-14;
+    const double floor = maximum * kHeatDisplayFloorRatio;
     for (int index = 0; index < frame.size(); ++index) {
       logFrame[index] = std::log(std::max(frame[index], floor));
     }
     frameTimes.push_back(time);
-    frameMin.push_back(logFrame.minCoeff());
+    frameMin.push_back(std::log(floor));
     frameMax.push_back(logFrame.maxCoeff());
     heatFrames.push_back(std::move(logFrame));
+  }
+
+  const Vector& finalFrame = heatFrames.back();
+  const double finalMinimum = frameMin.back();
+  const double finalRange = std::max(frameMax.back() - finalMinimum, 1e-30);
+  double minimumFinalRouteStartNormalizedHeat = 1.0;
+  for (const WebRoutePreset& route : routePresets) {
+    const Triangle& triangle = mesh.faces()[route.start.face].vertices;
+    double interpolatedLogHeat = 0.0;
+    for (std::size_t local = 0; local < triangle.size(); ++local) {
+      interpolatedLogHeat +=
+          route.start.barycentric[local] * finalFrame[static_cast<int>(triangle[local])];
+    }
+    const double normalized =
+        std::clamp((interpolatedLogHeat - finalMinimum) / finalRange, 0.0, 1.0);
+    minimumFinalRouteStartNormalizedHeat =
+        std::min(minimumFinalRouteStartNormalizedHeat, normalized);
+  }
+  if (minimumFinalRouteStartNormalizedHeat < kRouteStartReachThreshold) {
+    throw std::runtime_error(
+        "final display heat does not visibly reach every route start for genus " +
+        std::to_string(options.world.genus) +
+        " (minimum=" + std::to_string(minimumFinalRouteStartNormalizedHeat) + ")");
   }
 
   const std::size_t targetSamples = 300U;
@@ -535,7 +570,7 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
   std::ofstream metadata(metadataPath);
   requireStream(metadata, metadataPath);
   metadata << std::setprecision(12) << "{\n"
-           << "  \"schema\": \"geodesic-world-v3\",\n"
+           << "  \"schema\": \"geodesic-world-v4\",\n"
            << "  \"title\": \"The Shortest Path Through a Curved World\",\n"
            << "  \"accessibleLabel\": \"Genus " << options.world.genus
            << " closed orientable curved world\",\n"
@@ -544,6 +579,23 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
            << ", \"tubeRadius\": " << options.world.tubeRadius
            << ", \"relief\": " << options.world.relief << ", \"seed\": " << options.world.seed
            << "},\n"
+           << "  \"generator\": {\"composition\": " << jsonString(world.generator.composition)
+           << ", \"junction\": " << jsonString(world.generator.junction)
+           << ", \"cycleRank\": " << world.generator.cycleRank
+           << ", \"centerlineSamples\": " << world.generator.centerlineSamples
+           << ", \"ringRadius\": " << world.generator.ringRadius
+           << ", \"loopWidth\": " << world.generator.loopWidth
+           << ", \"effectiveTubeRadius\": " << world.generator.effectiveTubeRadius
+           << ", \"smoothMinimumRadius\": " << world.generator.smoothMinimumRadius
+           << ", \"gridOffsetFractions\": ";
+  writeVec3Json(metadata, world.generator.gridOffsetFractions);
+  metadata << ", \"smoothingPasses\": " << world.generator.smoothingPasses
+           << ", \"reprojectionPasses\": " << world.generator.reprojectionPasses
+           << ", \"samplingMinimum\": ";
+  writeVec3Json(metadata, world.generator.samplingMinimum);
+  metadata << ", \"samplingMaximum\": ";
+  writeVec3Json(metadata, world.generator.samplingMaximum);
+  metadata << "},\n"
            << "  \"vertices\": " << mesh.vertices().size() << ",\n"
            << "  \"edges\": " << mesh.edges().size() << ",\n"
            << "  \"faces\": " << mesh.faces().size() << ",\n"
@@ -573,11 +625,28 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
       << "  \"heatMethodTimeStep\": " << solver.operators().suggestedTimeStep << ",\n"
       << "  \"laplacianSign\": \"positive-semidefinite stiffness matrix approximating -Delta\",\n"
       << "  \"boundaryCondition\": \"natural Neumann; generated worlds are closed\",\n"
-      << "  \"heatEncoding\": \"per-frame log(u), linearly quantized to uint16\",\n"
-      << "  \"heatResidual\": " << heat.heatReport.relativeResidual << ",\n"
-      << "  \"poissonResidual\": " << heat.poissonReport.relativeResidual << ",\n"
-      << "  \"zeroGradientFaces\": " << heat.zeroGradientFaces << ",\n"
-      << "  \"routePresets\": [\n";
+      << "  \"heatEncoding\": \"log(u/max(u)) over a fixed fourteen-decade display range, linearly "
+         "quantized to uint16\",\n"
+      << "  \"heatDisplay\": {\"kind\": \"visualization-diffusion-frames\", "
+         "\"frameCount\": "
+      << frameTimes.size() << ", \"pathSolveUsesDisplayFrames\": false, "
+      << "\"timeStepMultipliers\": [";
+  for (std::size_t index = 0; index < options.heatTimeMultipliers.size(); ++index) {
+    metadata << options.heatTimeMultipliers[index]
+             << (index + 1U == options.heatTimeMultipliers.size() ? "" : ", ");
+  }
+  metadata << "], \"frameTimes\": [";
+  for (std::size_t index = 0; index < frameTimes.size(); ++index) {
+    metadata << frameTimes[index] << (index + 1U == frameTimes.size() ? "" : ", ");
+  }
+  metadata << "], \"normalizationLogDynamicRangeDecades\": 14, "
+           << "\"routeStartReachThreshold\": " << kRouteStartReachThreshold
+           << ", \"minimumFinalRouteStartNormalizedHeat\": " << minimumFinalRouteStartNormalizedHeat
+           << ", \"allRouteStartsReached\": true},\n"
+           << "  \"heatResidual\": " << heat.heatReport.relativeResidual << ",\n"
+           << "  \"poissonResidual\": " << heat.poissonReport.relativeResidual << ",\n"
+           << "  \"zeroGradientFaces\": " << heat.zeroGradientFaces << ",\n"
+           << "  \"routePresets\": [\n";
   for (std::size_t index = 0; index < routePresets.size(); ++index) {
     const WebRoutePreset& preset = routePresets[index];
     metadata << "    {\"id\": " << jsonString(preset.id)
@@ -615,6 +684,7 @@ WebExportReport exportCurvedWorld(const std::filesystem::path& outputDirectory,
           heat.poissonReport.relativeResidual,
           solver.preprocessingMilliseconds(),
           heat.heatReport.milliseconds + heat.poissonReport.milliseconds,
+          minimumFinalRouteStartNormalizedHeat,
           std::move(routePresets)};
 }
 
@@ -622,8 +692,8 @@ std::vector<WebExportReport> exportAllCurvedWorlds(const std::filesystem::path& 
                                                    const WebExportOptions& options) {
   std::filesystem::create_directories(outputDirectory);
   std::vector<WebExportReport> reports;
-  reports.reserve(3U);
-  for (int genus = 1; genus <= 3; ++genus) {
+  reports.reserve(5U);
+  for (int genus = 1; genus <= 5; ++genus) {
     WebExportOptions genusOptions = options;
     genusOptions.world.genus = genus;
     genusOptions.sourceVertex = kInvalidIndex;
@@ -637,7 +707,7 @@ std::vector<WebExportReport> exportAllCurvedWorlds(const std::filesystem::path& 
            << "  \"schema\": \"geodesic-world-manifest-v1\",\n"
            << "  \"binarySchemaVersion\": 3,\n"
            << "  \"defaultGenus\": 2,\n"
-           << "  \"supportedGenera\": [1, 2, 3],\n"
+           << "  \"supportedGenera\": [1, 2, 3, 4, 5],\n"
            << "  \"worlds\": [\n";
   for (std::size_t index = 0; index < reports.size(); ++index) {
     const WebExportReport& report = reports[index];
