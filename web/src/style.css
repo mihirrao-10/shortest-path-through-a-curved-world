@@ -7,9 +7,9 @@
   --white: #f5f5f5;
   --text: #d7d7d7;
   --muted: #969696;
-  --quiet: #707070;
+  --quiet: #777;
   --line: #282828;
-  --line-strong: #494949;
+  --line-strong: #5f5f5f;
   --figure-red: #ff3030;
   --figure-green: #39ff88;
   --chapter-title-size: clamp(2.05rem, 3.55vw, 3.5rem);
@@ -111,7 +111,8 @@ button:disabled {
   min-height: 100dvh;
   padding: 1.5rem;
   place-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--black);
   text-align: center;
 }
@@ -121,6 +122,7 @@ button:disabled {
   width: min(100%, 50rem);
   flex-direction: column;
   align-items: center;
+  margin-block: auto;
 }
 
 .opening-repository-link {
@@ -392,6 +394,7 @@ footer {
 .stage-footer button:disabled,
 .route-button:disabled,
 .release-button:disabled,
+.replay-button:disabled,
 .proceed-button:disabled {
   border-color: #272727;
   background: #080808;
@@ -1163,6 +1166,36 @@ footer p {
   .comparison-table th,
   .comparison-table td {
     padding-right: 0.55rem;
+  }
+}
+
+@media (max-width: 932px) and (max-height: 560px) {
+  .visual-column {
+    padding-block: 0.15rem 0.25rem;
+  }
+
+  .stage-header {
+    margin-bottom: 0.15rem;
+  }
+
+  .stage-header button,
+  .stage-footer button {
+    min-height: 1.75rem;
+    padding-block: 0.22rem;
+    font-size: 0.56rem;
+  }
+
+  .canvas-frame {
+    height: 32svh;
+    min-height: 100px;
+    max-height: 150px;
+  }
+
+  .scene-caption {
+    min-height: 0;
+    margin-block: 0.15rem;
+    font-size: 0.59rem;
+    line-height: 1.35;
   }
 }
 

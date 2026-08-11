@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A guided C++20 Heat Method journey across three native-generated worlds, from Genus 1 through Genus 3."
+      content="A guided C++20 Heat Method journey across three worlds generated in C++, from Genus 1 through Genus 3."
     />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -14,7 +14,7 @@
     />
     <meta
       property="og:description"
-      content="Follow heat as it reconstructs distance across a triangulated multi-handle world."
+      content="Follow heat as it reconstructs distance across triangulated worlds with one to three handles."
     />
     <meta property="og:type" content="website" />
     <meta
@@ -32,7 +32,7 @@
     />
     <meta
       name="twitter:description"
-      content="Follow heat as it reconstructs distance across a triangulated multi-handle world."
+      content="Follow heat as it reconstructs distance across triangulated worlds with one to three handles."
     />
     <meta
       name="twitter:image"
@@ -135,7 +135,7 @@
                 <canvas
                   id="world-canvas"
                   tabindex="0"
-                  aria-label="An interactive C++-generated triangulated surface with an amber heat source"
+                  aria-label="An interactive triangulated surface generated in C++ with an amber heat source"
                   aria-describedby="world-instructions scene-caption"
                 ></canvas>
                 <div
@@ -210,11 +210,11 @@
                   ground. What is the shortest route you can actually walk?
                 </p>
                 <p>
-                  The journey opens on a folded two-handled world. You can later
-                  change its topology, but the rule never changes: every valid
-                  step must remain on the surface. Genus counts handles, and the
-                  selector spans one through three. For a connected, closed,
-                  orientable triangulated surface,
+                  The journey opens on a folded world with two handles. You can
+                  later change its topology, but the rule never changes: every
+                  valid step must remain on the surface. Genus counts handles,
+                  and the selector spans one through three. For a connected,
+                  closed, orientable triangulated surface,
                   <span data-math="\chi=V-E+F=2-2g"></span>. Switching genus
                   changes global topology, not merely cosmetic shape.
                 </p>
@@ -244,9 +244,9 @@
                   Why not draw a straight line?
                 </h2>
                 <p>
-                  The first temptation is a straight line. The curved world is a
-                  two-dimensional surface inside ordinary three-dimensional
-                  space. That surrounding room is the
+                  The first temptation is a straight line. The curved world has
+                  two dimensions and sits inside ordinary space with three
+                  dimensions. That surrounding room is the
                   <em>ambient space</em>. A straight line may move anywhere in
                   that room, including places where the surface is absent.
                 </p>
@@ -305,28 +305,28 @@
                   To remain on the world, the computer first needs a map. A
                   <em>triangle mesh</em> stores sampled points called vertices,
                   links called edges, and triangular faces. Every face is flat.
-                  Halfedge connectivity, a directed-edge record that links
+                  Halfedge connectivity, a directed edge record that links
                   neighboring faces, joins them into one closed surface without
                   a boundary.
                 </p>
                 <p>
-                  More, better-shaped triangles usually reduce discretization
-                  error, but increase assembly, factorization, rendering, and
-                  storage costs. Thin or badly angled triangles also make
-                  cotangent operators less reliable.
+                  More triangles with better shape quality usually reduce
+                  discretization error, but increase assembly, factorization,
+                  rendering, and storage costs. Thin or badly angled triangles
+                  also make cotangent operators less reliable.
                 </p>
                 <p>
-                  The central neck is <em>saddle-like</em>: along two tangent
+                  The central neck is shaped like a saddle: along two tangent
                   directions, the surface bends in opposite ways. That shape is
                   visible in the generated geometry. This project does not claim
-                  a separate numerical Gaussian-curvature computation.
+                  a separate numerical computation of Gaussian curvature.
                 </p>
                 <p>
-                  Dijkstra can follow the mesh, but the mesh edges restrict its
-                  directions. It finds the exact shortest route in that graph,
-                  but it cannot cut across a triangle interior. Its result can
-                  zigzag or change with the available edge directions, so it is
-                  a baseline rather than the continuous surface answer.
+                  The displayed Dijkstra baseline first connects the interior
+                  start to its nearest face vertex. From that vertex onward,
+                  Dijkstra finds the exact shortest route in the mesh edge
+                  graph, whose restricted directions can make the result zigzag.
+                  It is a baseline rather than the continuous surface answer.
                 </p>
                 <p class="margin-note">
                   The edge route is not an exact continuous geodesic on the
@@ -445,11 +445,11 @@
                   equation offers no route through ambient space.
                 </p>
                 <p>
-                  The animation uses additional, longer C++ diffusion solves so
-                  the final frame visibly reaches every authored route start.
-                  Those display times never replace the short
+                  The animation uses additional C++ solves across a range of
+                  diffusion times, so the final frame visibly reaches every
+                  authored route start. That range extends well beyond the short
                   <span data-math="t=h^2"></span> field used by the Heat Method
-                  path solve.
+                  path solve, but the display times never replace it.
                 </p>
                 <p class="revelation">Can the flow of heat reveal distance?</p>
                 <button
@@ -500,7 +500,7 @@
                 </h2>
                 <p>
                   Warmth first reveals direction, then a distance field reveals
-                  a route. On each face, piecewise-linear heat values form a
+                  a route. On each face, heat values that vary linearly form a
                   constant local slope. A <em>gradient</em> is the direction and
                   rate of steepest increase. The heat gradient points toward the
                   hot source, so negating it points outward toward increasing
@@ -532,10 +532,10 @@
                 </ol>
                 <p>
                   Those facewise directions need not fit one scalar field
-                  perfectly. A Poisson solve finds the distance-like field whose
-                  gradient agrees with them as closely as the discretization
-                  allows. Tracing that field downhill across face interiors
-                  yields an approximate route to the beacon.
+                  perfectly. A Poisson solve finds the field whose gradient
+                  agrees with them as closely as the discretization allows.
+                  Tracing that distance approximation downhill across face
+                  interiors yields an approximate route to the beacon.
                 </p>
                 <div class="chapter-proceed">
                   <button
@@ -576,10 +576,10 @@
                 <p>
                   Here <span data-math="\gamma'(t)"></span> is tangent velocity,
                   its norm is instantaneous speed, and the integral adds all
-                  infinitesimal lengths. A constant-speed straight segment in a
-                  flat plane has length equal to ordinary endpoint distance. On
-                  this world, the curve must also satisfy the surface
-                  constraint.
+                  infinitesimal lengths. A straight segment traversed at
+                  constant speed in a flat plane has length equal to ordinary
+                  endpoint distance. On this world, the curve must also satisfy
+                  the surface constraint.
                 </p>
                 <p>
                   A surface <em>metric</em> tells us how tangent motion is
@@ -621,7 +621,10 @@
                   <article>
                     <span>02</span>
                     <h3>Edge Dijkstra</h3>
-                    <p>Movement is allowed only along the mesh-edge graph.</p>
+                    <p>
+                      The interior start connects to a nearby vertex, then
+                      movement follows the mesh edge graph.
+                    </p>
                   </article>
                   <article>
                     <span>03</span>
@@ -640,7 +643,7 @@
                 <p>
                   The method does not search through complete paths. It asks how
                   a brief pulse spreads from the source, then turns that local
-                  response into a global distance-like field.
+                  response into a global approximation of distance.
                 </p>
 
                 <div class="equation-step">
@@ -654,9 +657,9 @@
                       area to vertices. The <em>stiffness matrix</em>
                       <span data-math="L"></span> measures changes across
                       neighboring vertices. It discretizes the positive
-                      semidefinite Laplace-Beltrami operator, the surface
-                      version of the operator that describes diffusion. The
-                      solution <span data-math="u"></span> is temperature.
+                      semidefinite surface Laplacian, the surface version of the
+                      operator that describes diffusion. The solution
+                      <span data-math="u"></span> is temperature.
                     </p>
                     <p>
                       Choosing <span data-math="t\approx h^2"></span>, where
@@ -696,9 +699,9 @@
                     <p>
                       <strong>Reconstruct distance.</strong> Divergence measures
                       the net flow out of a local region. The load
-                      <span data-math="b_X"></span> is the weak, integrated
-                      divergence of the arrows. The Poisson equation links that
-                      divergence to a scalar field
+                      <span data-math="b_X"></span> records how the arrow field
+                      pairs with every basis gradient. The Poisson equation
+                      links those pairings to a scalar field
                       <span data-math="\phi"></span> whose gradient best agrees
                       with <span data-math="X"></span> over the mesh.
                     </p>
@@ -759,7 +762,8 @@
                       ways, called different homotopy classes.
                     </li>
                     <li>
-                      All numerical computation in this project is CPU-only.
+                      All geometry generation and numerical solves in this
+                      project run on the CPU.
                     </li>
                   </ul>
                 </div>
@@ -792,8 +796,8 @@
                   The control above the world can draw all three validated Heat
                   Method traces on the selected surface. Their starts and
                   lengths differ, but the source solve is shared. A restrained
-                  x-ray treatment appears only in comparison mode so paths on
-                  the far side remain readable.
+                  transparent treatment appears only in comparison mode so paths
+                  on the far side remain readable.
                 </p>
 
                 <div
@@ -808,7 +812,12 @@
                     class="comparison-legend"
                     aria-label="Route colors"
                   ></div>
-                  <div class="comparison-table-wrap" tabindex="0">
+                  <div
+                    class="comparison-table-wrap"
+                    role="region"
+                    aria-label="Scrollable route length comparison"
+                    tabindex="0"
+                  >
                     <table class="comparison-table">
                       <caption>
                         Exported route lengths
@@ -818,7 +827,7 @@
                           <th scope="col">Route</th>
                           <th scope="col">Chord</th>
                           <th scope="col">Dijkstra</th>
-                          <th scope="col">Heat trace</th>
+                          <th scope="col">Heat Method trace</th>
                         </tr>
                       </thead>
                       <tbody id="comparison-table-body"></tbody>
@@ -857,17 +866,18 @@
                 </h2>
                 <p>
                   Most vertices interact only with their
-                  <em>one-ring neighbors</em>, the vertices connected to them by
-                  one edge. Eigen assembles sparse mass and stiffness operators
-                  on the CPU. Assembly and factorization happen once, then later
-                  source queries reuse them. The three routes share one distance
-                  field rather than exporting redundant solves.
+                  <em>immediate mesh neighbors</em>, the vertices connected to
+                  them by one edge. Eigen assembles sparse mass and stiffness
+                  operators on the CPU. Assembly and factorization happen once,
+                  then later source queries reuse them. The three routes share
+                  one distance field rather than exporting redundant solves.
                 </p>
                 <div
                   id="benchmark-chart"
                   class="benchmark-chart"
                   role="img"
                   aria-label="Measured CPU scaling benchmark"
+                  aria-describedby="benchmark-caption"
                 ></div>
                 <div class="timing-legend">
                   <span><i class="preprocess-swatch"></i> Preprocess once</span>
@@ -945,13 +955,13 @@
                   writes the files rendered here.
                 </p>
 
-                <h3>C++20 multi-genus generation</h3>
+                <h3>C++20 generation across three genera</h3>
                 <p>
-                  A project-specific implicit field thickens one, two, or three
-                  adjacent rounded loops, preserving the irregular ring and
-                  folded double-loop worlds. Marching tetrahedra reuses edge
-                  intersections, smooths tangentially, reprojects to the level
-                  set, and verifies orientation, manifold structure, Euler
+                  An implicit field designed for this project thickens one, two,
+                  or three adjacent rounded loops, preserving the irregular ring
+                  and worlds with two folded loops. Marching tetrahedra reuses
+                  edge intersections, smooths tangentially, reprojects to the
+                  level set, and verifies orientation, manifold structure, Euler
                   characteristic, triangle quality, and landmarks.
                 </p>
 
@@ -966,7 +976,7 @@
                 <h3>Deterministic C++ export</h3>
                 <p>
                   The exporter writes indexed geometry, adjacency, nine native
-                  heat-display states, distance, Dijkstra data, gradient
+                  heat display states, distance, Dijkstra data, gradient
                   samples, route presets, C++ trace measurements, topology, and
                   solver metadata.
                 </p>
@@ -975,8 +985,8 @@
                 <p>
                   TypeScript validates binary schema version 3, topology, path
                   ranges, and measurements. The displayed green paths are C++
-                  traces. A browser tracer remains a cross-check, not the source
-                  of the displayed geometry.
+                  traces. A browser tracer remains an independent check, not the
+                  source of the displayed geometry.
                 </p>
 
                 <h3>Persistent presentation</h3>
@@ -1023,10 +1033,11 @@
                 <p>
                   The mesh discretizes a smooth surface, the Heat Method is
                   approximate, and cotangent accuracy depends on triangle
-                  quality. Dijkstra is edge-restricted. Face tracing can fail
-                  near critical regions, although every published preset reaches
-                  the source without fallback. Distinct homotopy classes can
-                  have nearly equal lengths. Computation is CPU-only.
+                  quality. Dijkstra remains restricted to edges. Face tracing
+                  can fail near critical regions, although every published
+                  preset reaches the source without fallback. Distinct homotopy
+                  classes can have nearly equal lengths. Geometry generation and
+                  numerical solves run on the CPU.
                 </p>
 
                 <div class="references">

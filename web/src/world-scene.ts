@@ -15,6 +15,9 @@ import {
 
 const INVALID_INDEX = 0xffffffff;
 const HEAT_PATH_COLORS = [0x39ff88, 0x8bffad, 0x1fd66e] as const;
+const FINAL_HEAT_EXPOSURE = 0.84;
+const HEAT_ANIMATION_DURATION_MILLISECONDS = 5200;
+const GRADIENT_FLOW_PERIOD_MILLISECONDS = 1050;
 let activeSceneCount = 0;
 let sceneGeneration = 0;
 
@@ -22,13 +25,13 @@ function actCaptions(genus: number, heatFrameCount: number): readonly string[] {
   return [
     `An explorer and amber beacon stand on a closed Genus ${genus} world generated and solved by C++.`,
     "The tempting ambient chord crosses empty space, so the explorer cannot walk it.",
-    "The triangle mesh is the map C++ stores; Dijkstra follows only its edges.",
+    "The interior start first joins its nearest vertex; Dijkstra then follows the mesh edges.",
     "Choose one of three native explorer starts, all aimed at the same beacon.",
     `${heatFrameCount} native diffusion states spread only over the valid surface from the amber beacon.`,
     "Warmth reveals facewise direction before Poisson reconstructs distance.",
     "Contours show level sets of one Heat Method distance field.",
-    "A restrained x-ray overlay keeps three fallback-free Heat paths readable.",
-    "C++20 and Eigen export geometry, sparse-solve fields, and measured routes.",
+    "A restrained transparent overlay keeps all three validated Heat paths readable.",
+    "C++20 and Eigen export geometry, fields from sparse solves, and measured routes.",
     "The explorer can follow the native approximate path without leaving the surface.",
   ];
 }
@@ -49,6 +52,12 @@ type RouteVisual = {
   ambientLine: THREE.Line;
   dijkstraLine: THREE.Line;
   heatPath: THREE.Mesh;
+};
+
+type GradientFlowSample = {
+  start: THREE.Vector3;
+  direction: THREE.Vector3;
+  phase: number;
 };
 
 function vertexVector(
@@ -243,6 +252,8 @@ export class WorldScene {
   private readonly beaconLight: THREE.PointLight;
   private readonly explorer: THREE.Group;
   private readonly gradientLines: THREE.LineSegments;
+  private readonly gradientFlow: THREE.Points;
+  private readonly gradientFlowSamples: readonly GradientFlowSample[];
   private readonly routeVisuals = new Map<RoutePresetId, RouteVisual>();
   private readonly resizeObserver: ResizeObserver;
   private readonly worldCenter = new THREE.Vector3();
@@ -369,9 +380,13 @@ export class WorldScene {
     this.explorer = makeMarker(0xf5f7f6, 0.022);
     this.world.add(this.explorer);
 
-    this.gradientLines = this.createGradientLines();
+    const gradientVisuals = this.createGradientVisuals();
+    this.gradientLines = gradientVisuals.lines;
+    this.gradientFlow = gradientVisuals.flow;
+    this.gradientFlowSamples = gradientVisuals.samples;
     this.gradientLines.visible = false;
-    this.world.add(this.gradientLines);
+    this.gradientFlow.visible = false;
+    this.world.add(this.gradientLines, this.gradientFlow);
     this.buildPalette();
     this.buildRouteVisuals();
 
@@ -400,6 +415,7 @@ export class WorldScene {
     this.canvas.dataset.faceCount = String(data.faceCount);
     this.canvas.dataset.heatFrameCount = String(data.heatFrameCount);
     this.canvas.dataset.heatDisplayNative = "true";
+    this.canvas.dataset.gradientFlow = "hidden";
     this.canvas.dataset.eulerCharacteristic = String(
       metadata.topology.eulerCharacteristic,
     );
@@ -575,9 +591,20 @@ export class WorldScene {
     wireMaterial.opacity = next === 2 ? 0.22 : next === 8 ? 0.16 : 0;
     this.wireframe.visible = wireMaterial.opacity > 0;
     this.gradientLines.visible = next === 5;
+    this.gradientFlow.visible = next === 5;
+    this.canvas.dataset.gradientFlow =
+      next === 5 ? (this.reducedMotion ? "static" : "animated") : "hidden";
+    if (next !== 5) delete this.canvas.dataset.gradientFlowPhase;
     if (next === 4 && this.heatEnabled) {
-      this.applyHeat(1);
-      this.canvas.dataset.heatMode = "released";
+      const progress =
+        this.canvas.dataset.heatMode === "released"
+          ? 1
+          : Math.min(
+              1,
+              (performance.now() - this.heatStartTime) /
+                HEAT_ANIMATION_DURATION_MILLISECONDS,
+            );
+      this.applyHeat(progress);
     } else {
       this.applyNonHeatColors();
     }
@@ -591,6 +618,7 @@ export class WorldScene {
       this.canvas.dataset.heatMode = "idle";
       delete this.canvas.dataset.heatProgress;
       delete this.canvas.dataset.heatFrame;
+      delete this.canvas.dataset.heatExposure;
       this.lastHeatFrame = -1;
       this.applyNonHeatColors();
       this.onHeatStateChange?.("idle");
@@ -615,8 +643,9 @@ export class WorldScene {
 
   restoreHeatCompletion(): void {
     this.heatEnabled = true;
-    this.applyHeat(1);
+    this.applyHeat(1, this.activeAct === 4);
     this.canvas.dataset.heatMode = "released";
+    if (this.activeAct !== 4) this.applyNonHeatColors();
     this.applyVisualState();
   }
 
@@ -638,6 +667,8 @@ export class WorldScene {
     this.routeVisuals.clear();
     this.gradientLines.geometry.dispose();
     (this.gradientLines.material as THREE.Material).dispose();
+    this.gradientFlow.geometry.dispose();
+    (this.gradientFlow.material as THREE.Material).dispose();
     disposeObject(this.beacon);
     disposeObject(this.explorer);
     this.geometry.dispose();
@@ -741,7 +772,7 @@ export class WorldScene {
     this.colorAttribute.needsUpdate = true;
   }
 
-  private applyHeat(progress: number): void {
+  private applyHeat(progress: number, visible = true): void {
     const { first, second, mix, visibleFrame } = heatFrameInterpolation(
       this.data.heatFrameCount,
       progress,
@@ -753,31 +784,45 @@ export class WorldScene {
     }
     const a = this.data.heatFrames[first]!;
     const b = this.data.heatFrames[second]!;
-    for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
-      const normalized =
-        THREE.MathUtils.lerp(a[vertex]!, b[vertex]!, mix) / 65535;
-      const paletteIndex = Math.min(
-        255,
-        Math.max(0, Math.round(normalized * 255)),
-      );
-      this.colors[3 * vertex] = this.palette[3 * paletteIndex]!;
-      this.colors[3 * vertex + 1] = this.palette[3 * paletteIndex + 1]!;
-      this.colors[3 * vertex + 2] = this.palette[3 * paletteIndex + 2]!;
+    const heatExposure = THREE.MathUtils.lerp(
+      1,
+      FINAL_HEAT_EXPOSURE,
+      THREE.MathUtils.smoothstep(progress, 0.58, 1),
+    );
+    if (visible) {
+      for (let vertex = 0; vertex < this.data.vertexCount; vertex += 1) {
+        const normalized =
+          (THREE.MathUtils.lerp(a[vertex]!, b[vertex]!, mix) / 65535) *
+          heatExposure;
+        const paletteIndex = Math.min(
+          255,
+          Math.max(0, Math.round(normalized * 255)),
+        );
+        this.colors[3 * vertex] = this.palette[3 * paletteIndex]!;
+        this.colors[3 * vertex + 1] = this.palette[3 * paletteIndex + 1]!;
+        this.colors[3 * vertex + 2] = this.palette[3 * paletteIndex + 2]!;
+      }
+      this.colorAttribute.needsUpdate = true;
+      (this.heatGlow.material as THREE.MeshBasicMaterial).opacity =
+        0.03 + 0.025 * THREE.MathUtils.smoothstep(progress, 0, 1);
+      this.beaconLight.intensity =
+        2.35 + 0.38 * Math.sin(Math.min(progress, 1) * Math.PI);
     }
-    this.colorAttribute.needsUpdate = true;
-    (this.heatGlow.material as THREE.MeshBasicMaterial).opacity =
-      0.035 + 0.055 * THREE.MathUtils.smoothstep(progress, 0, 1);
-    this.beaconLight.intensity =
-      2.35 + 0.38 * Math.sin(Math.min(progress, 1) * Math.PI);
     this.canvas.dataset.heatProgress = THREE.MathUtils.clamp(
       progress,
       0,
       1,
     ).toFixed(3);
+    this.canvas.dataset.heatExposure = heatExposure.toFixed(3);
   }
 
-  private createGradientLines(): THREE.LineSegments {
+  private createGradientVisuals(): {
+    lines: THREE.LineSegments;
+    flow: THREE.Points;
+    samples: readonly GradientFlowSample[];
+  } {
     const positions: number[] = [];
+    const samples: GradientFlowSample[] = [];
     this.data.gradientSamples.forEach((sample, sampleIndex) => {
       if (sampleIndex % 2 !== 0) return;
       const start = new THREE.Vector3(...sample.position);
@@ -793,6 +838,11 @@ export class WorldScene {
         );
       }
       normal.normalize();
+      samples.push({
+        start: start.clone().addScaledVector(normal, 0.006),
+        direction: direction.clone(),
+        phase: (sampleIndex * 0.38196601125) % 1,
+      });
       const side = new THREE.Vector3()
         .crossVectors(direction, normal)
         .normalize();
@@ -812,7 +862,7 @@ export class WorldScene {
       "position",
       new THREE.Float32BufferAttribute(positions, 3),
     );
-    return new THREE.LineSegments(
+    const lines = new THREE.LineSegments(
       geometry,
       new THREE.LineBasicMaterial({
         color: 0xb5eee4,
@@ -822,6 +872,49 @@ export class WorldScene {
         depthWrite: false,
       }),
     );
+    const flowPositions = new Float32Array(samples.length * 3);
+    const flowAttribute = new THREE.BufferAttribute(flowPositions, 3);
+    flowAttribute.setUsage(THREE.DynamicDrawUsage);
+    const flowGeometry = new THREE.BufferGeometry();
+    flowGeometry.setAttribute("position", flowAttribute);
+    const flow = new THREE.Points(
+      flowGeometry,
+      new THREE.PointsMaterial({
+        color: 0xe8fff9,
+        size: 0.018,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.82,
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    flow.name = "gradient-direction-flow";
+    this.updateGradientFlowPositions(flow, samples, 0);
+    return { lines, flow, samples };
+  }
+
+  private updateGradientFlowPositions(
+    flow: THREE.Points,
+    samples: readonly GradientFlowSample[],
+    elapsedCycles: number,
+  ): void {
+    const positions = flow.geometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
+    samples.forEach((sample, index) => {
+      const phase = (sample.phase + elapsedCycles) % 1;
+      const offset = 0.006 + phase * 0.044;
+      positions.setXYZ(
+        index,
+        sample.start.x + sample.direction.x * offset,
+        sample.start.y + sample.direction.y * offset,
+        sample.start.z + sample.direction.z * offset,
+      );
+    });
+    positions.needsUpdate = true;
   }
 
   private buildRouteVisuals(): void {
@@ -1113,6 +1206,22 @@ export class WorldScene {
       );
       this.explorer.scale.setScalar(1 + 0.018 * Math.sin(time * 0.0032 + 1));
     }
+    if (this.activeAct === 5) {
+      const rawCycles =
+        (time - this.actStartTime) / GRADIENT_FLOW_PERIOD_MILLISECONDS;
+      const elapsedCycles = this.reducedMotion
+        ? 0.68
+        : Math.min(rawCycles, 4.15);
+      this.updateGradientFlowPositions(
+        this.gradientFlow,
+        this.gradientFlowSamples,
+        elapsedCycles,
+      );
+      if (!this.reducedMotion && rawCycles >= 4.15) {
+        this.canvas.dataset.gradientFlow = "settled";
+      }
+      this.canvas.dataset.gradientFlowPhase = (elapsedCycles % 1).toFixed(3);
+    }
     const selected = this.routeVisuals.get(this.selectedRouteId)!;
     if (this.activeAct === 2 && selected.dijkstraLine.parent) {
       const count =
@@ -1125,14 +1234,12 @@ export class WorldScene {
         Math.max(2, Math.floor(count * progress)),
       );
     }
-    if (
-      this.activeAct === 4 &&
-      this.heatEnabled &&
-      this.canvas.dataset.heatMode === "animation"
-    ) {
-      const duration = this.reducedMotion ? 1 : 5200;
+    if (this.heatEnabled && this.canvas.dataset.heatMode === "animation") {
+      const duration = this.reducedMotion
+        ? 1
+        : HEAT_ANIMATION_DURATION_MILLISECONDS;
       const progress = Math.min(1, (time - this.heatStartTime) / duration);
-      this.applyHeat(progress);
+      this.applyHeat(progress, this.activeAct === 4);
       if (progress >= 1) {
         this.canvas.dataset.heatMode = "released";
         this.onHeatStateChange?.("released");

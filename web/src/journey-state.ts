@@ -15,6 +15,7 @@ export interface JourneyState {
   heatReleased: boolean;
   compareMode: boolean;
   technicalUnlocked: boolean;
+  writtenFallback: boolean;
 }
 
 export type JourneyAction =
@@ -26,6 +27,8 @@ export type JourneyAction =
   | { type: "PROCEED"; act: JourneyAct }
   | { type: "TOGGLE_COMPARE" }
   | { type: "SET_COMPARE"; enabled: boolean }
+  | { type: "ENTER_WRITTEN_FALLBACK" }
+  | { type: "WORLD_DATA_AVAILABLE" }
   | { type: "WORLD_CHANGED"; routeIds: readonly RoutePresetId[] }
   | { type: "REPLAY" };
 
@@ -40,6 +43,7 @@ export function createInitialJourneyState(): JourneyState {
     heatReleased: false,
     compareMode: false,
     technicalUnlocked: false,
+    writtenFallback: false,
   };
 }
 
@@ -49,13 +53,18 @@ export function isActUnlocked(state: JourneyState, act: JourneyAct): boolean {
 
 export function canProceed(state: JourneyState, act: JourneyAct): boolean {
   if (!isActUnlocked(state, act) || act >= TECHNICAL_ACT) return false;
-  if (act === 3) return state.routeSelected !== null;
-  if (act === 4) return state.heatReleased;
+  if (act === 3) return state.writtenFallback || state.routeSelected !== null;
+  if (act === 4) return state.writtenFallback || state.heatReleased;
   return true;
 }
 
 export function isCompareEligible(state: JourneyState): boolean {
-  return state.started && state.routeLocked && state.maxUnlockedAct >= 7;
+  return (
+    state.started &&
+    state.routeLocked &&
+    state.routeSelected !== null &&
+    state.maxUnlockedAct >= 7
+  );
 }
 
 function nextAct(act: JourneyAct): JourneyAct {
@@ -69,7 +78,11 @@ export function reduceJourney(
   switch (action.type) {
     case "START":
       if (state.started) return state;
-      return { ...createInitialJourneyState(), started: true };
+      return {
+        ...createInitialJourneyState(),
+        started: true,
+        writtenFallback: state.writtenFallback,
+      };
 
     case "SET_ACTIVE_ACT":
       if (!isActUnlocked(state, action.act)) return state;
@@ -116,7 +129,8 @@ export function reduceJourney(
         ...state,
         activeAct: destination,
         maxUnlockedAct,
-        routeLocked: action.act === 3 ? true : state.routeLocked,
+        routeLocked:
+          action.act === 3 && !state.writtenFallback ? true : state.routeLocked,
         compareMode: destination < 7 ? false : state.compareMode,
         technicalUnlocked:
           state.technicalUnlocked || destination === TECHNICAL_ACT,
@@ -130,6 +144,22 @@ export function reduceJourney(
     case "SET_COMPARE":
       if (action.enabled && !isCompareEligible(state)) return state;
       return { ...state, compareMode: action.enabled };
+
+    case "ENTER_WRITTEN_FALLBACK":
+      if (state.writtenFallback) return state;
+      return {
+        ...state,
+        writtenFallback: true,
+        routeSelected: null,
+        routeLocked: false,
+        heatAnimating: false,
+        heatReleased: false,
+        compareMode: false,
+      };
+
+    case "WORLD_DATA_AVAILABLE":
+      if (!state.writtenFallback) return state;
+      return { ...createInitialJourneyState(), started: state.started };
 
     case "WORLD_CHANGED": {
       if (
@@ -154,6 +184,9 @@ export function reduceJourney(
     }
 
     case "REPLAY":
-      return createInitialJourneyState();
+      return {
+        ...createInitialJourneyState(),
+        writtenFallback: state.writtenFallback,
+      };
   }
 }

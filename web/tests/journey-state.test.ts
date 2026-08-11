@@ -31,6 +31,7 @@ describe("journey state", () => {
       heatReleased: false,
       compareMode: false,
       technicalUnlocked: false,
+      writtenFallback: false,
     });
   });
 
@@ -150,5 +151,26 @@ describe("journey state", () => {
     expect(reduceJourney(state, { type: "REPLAY" })).toEqual(
       createInitialJourneyState(),
     );
+  });
+
+  it("keeps every written chapter reachable when world data is unavailable", () => {
+    let state = reduceJourney(createInitialJourneyState(), {
+      type: "ENTER_WRITTEN_FALLBACK",
+    });
+    state = reduceJourney(state, { type: "START" });
+    for (const act of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
+      expect(canProceed(state, act)).toBe(true);
+      state = reduceJourney(state, { type: "PROCEED", act });
+    }
+    expect(state).toMatchObject({
+      activeAct: 10,
+      technicalUnlocked: true,
+      routeSelected: null,
+      routeLocked: false,
+      heatReleased: false,
+      writtenFallback: true,
+    });
+    expect(isCompareEligible(state)).toBe(false);
+    expect(reduceJourney(state, { type: "REPLAY" }).writtenFallback).toBe(true);
   });
 });

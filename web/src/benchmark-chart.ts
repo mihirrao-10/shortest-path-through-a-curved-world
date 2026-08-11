@@ -79,8 +79,16 @@ export async function renderBenchmarkChart(
   const margin = { top: 28, right: 20, bottom: 48, left: 48 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const x = (index: number): number =>
-    margin.left + (index / (data.cases.length - 1)) * plotWidth;
+  const minimumFaceLog = Math.log10(data.cases[0]!.faces);
+  const maximumFaceLog = Math.log10(data.cases.at(-1)!.faces);
+  const x = (index: number): number => {
+    const faceLog = Math.log10(data.cases[index]!.faces);
+    return (
+      margin.left +
+      ((faceLog - minimumFaceLog) / (maximumFaceLog - minimumFaceLog)) *
+        plotWidth
+    );
+  };
   const minimumLog = -2.2;
   const maximumLog = 3;
   const y = (milliseconds: number): number => {
@@ -172,7 +180,7 @@ export async function renderBenchmarkChart(
     `Measured locally on the Genus 2 world in double precision: resolution ${largest.resolution}, ${largest.faces.toLocaleString()} faces, ` +
     `${largest.preprocessingMilliseconds.toFixed(1)} ms preprocessing, ` +
     `${largest.meanReusedHeatQueryMilliseconds.toFixed(2)} ms mean reused Heat Method query, and ` +
-    `${largest.dijkstraQueryMilliseconds.toFixed(2)} ms edge-Dijkstra query ` +
-    `(${data.reusedSourceCount} Heat Method sources and ${data.dijkstraRepetitions} Dijkstra runs after ${data.warmupQueries} warm-up). ` +
-    "Dijkstra is faster at the largest measured CPU case here; it computes a mesh-edge graph distance, while the Heat Method reconstructs a surface field.";
+    `${largest.dijkstraQueryMilliseconds.toFixed(2)} ms mesh edge Dijkstra query ` +
+    `(${data.reusedSourceCount} reused Heat Method source queries after ${data.warmupQueries} warmup ${data.warmupQueries === 1 ? "query" : "queries"}; Dijkstra averaged over ${data.dijkstraRepetitions} runs). ` +
+    "Both axes use logarithmic spacing. Dijkstra is faster at the largest measured CPU case here; it computes a mesh edge graph distance, while the Heat Method reconstructs a surface field.";
 }

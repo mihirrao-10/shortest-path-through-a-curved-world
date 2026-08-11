@@ -114,6 +114,9 @@ function fallbackCaption(
   route: RoutePreset | undefined,
   heatFrameCount: number,
 ): string {
+  if (state.writtenFallback) {
+    return "World data is unavailable. The written explanation remains accessible.";
+  }
   if (state.compareMode) {
     return "Comparison mode lists all three exported Heat Method traces and measurements.";
   }
@@ -123,7 +126,7 @@ function fallbackCaption(
   const captions = [
     `A written view of the closed Genus ${genus} world.`,
     "The ambient chord leaves the surface, so it is not a legal walking route.",
-    "Edge Dijkstra is exact only on the mesh-edge graph.",
+    "The interior start joins its nearest vertex; Dijkstra is exact on the edge graph from there.",
     "Select an exported start to reveal its three measured lengths.",
     state.heatReleased
       ? `All ${heatFrameCount} exported heat states have completed.`
@@ -160,6 +163,8 @@ async function start(): Promise<void> {
   const dijkstraLength = required<HTMLElement>("#dijkstra-length");
   const heatLength = required<HTMLElement>("#heat-length");
   const routePrompt = required<HTMLElement>("#route-selection-prompt");
+  const routePromptDefault =
+    routePrompt.textContent?.trim() ?? "Select one route.";
   const routeDetails = required<HTMLElement>("#route-details");
   const routeChoice = required<HTMLElement>("#route-choice");
   const routeButtonsContainer = required<HTMLElement>("#route-buttons");
@@ -182,6 +187,7 @@ async function start(): Promise<void> {
   const proceedButtons = [
     ...document.querySelectorAll<HTMLButtonElement>("[data-proceed-act]"),
   ];
+  const routeProceed = required<HTMLButtonElement>("#route-proceed");
   const genusButtons = [
     ...document.querySelectorAll<HTMLButtonElement>("button[data-genus]"),
   ];
@@ -203,6 +209,7 @@ async function start(): Promise<void> {
   let storyTraveling = false;
   let openingTransitionTimer = 0;
   let journeyFocusTimer = 0;
+  let loadingHideTimer = 0;
   const fallbackHeatTimers = new Set<number>();
 
   const chapterAct = (chapter: HTMLElement): JourneyAct =>
@@ -278,7 +285,13 @@ async function start(): Promise<void> {
   const updateRouteCopy = (preset: RoutePreset | undefined): void => {
     const selected = preset !== undefined;
     routeDetails.hidden = !selected;
-    routePrompt.hidden = selected;
+    routePrompt.hidden = selected && !journey.writtenFallback;
+    routePrompt.textContent = journey.writtenFallback
+      ? "World data is unavailable. Continue to the written method and mathematics."
+      : routePromptDefault;
+    if (selected) routeProceed.removeAttribute("aria-describedby");
+    else
+      routeProceed.setAttribute("aria-describedby", "route-selection-prompt");
     routeChoice.dataset.activeRouteId = preset?.id ?? "";
     routeDetails.dataset.activeRouteId = preset?.id ?? "";
     if (!preset) return;
@@ -312,12 +325,17 @@ async function start(): Promise<void> {
   };
 
   const updateHeatInterface = (): void => {
+    releaseButton.hidden = journey.writtenFallback;
     releaseButton.setAttribute(
       "aria-pressed",
       String(journey.heatAnimating || journey.heatReleased),
     );
-    releaseButton.disabled = journey.heatAnimating || journey.heatReleased;
-    if (journey.heatReleased) {
+    releaseButton.disabled =
+      loadingGenus || journey.heatAnimating || journey.heatReleased;
+    if (journey.writtenFallback) {
+      heatStatus.textContent =
+        "World data is unavailable. Continue to the written direction chapter.";
+    } else if (journey.heatReleased) {
       releaseButton.textContent = "Heat released";
       heatStatus.textContent = `All ${activeHeatFrameCount()} exported heat states are complete. The final state remains visible.`;
     } else if (journey.heatAnimating) {
@@ -381,6 +399,7 @@ async function start(): Promise<void> {
     document.body.dataset.routeLocked = String(journey.routeLocked);
     document.body.dataset.heatReleased = String(journey.heatReleased);
     document.body.dataset.comparison = String(journey.compareMode);
+    document.body.dataset.writtenFallback = String(journey.writtenFallback);
     journeyShell.hidden = !journey.started;
     if (!journey.started) {
       openingScreen.hidden = false;
@@ -414,6 +433,12 @@ async function start(): Promise<void> {
     updateRouteCopy(activePreset());
     updateRouteButtons();
     updateHeatInterface();
+    genusButtons.forEach((button) => {
+      button.disabled = loadingGenus || journey.heatAnimating;
+    });
+    focusRouteStart.disabled =
+      worldScene === undefined || journey.routeSelected === null;
+    replayJourney.disabled = loadingGenus;
     syncScene();
     requestAnimationFrame(updateStageHeight);
   };
@@ -460,6 +485,7 @@ async function start(): Promise<void> {
           ?.focus({ preventScroll: true });
       }
       storyTraveling = false;
+      requestStoryUpdate();
     };
     journeyFocusTimer = window.setTimeout(finish, reducedMotion ? 0 : 520);
   };
@@ -530,6 +556,17 @@ async function start(): Promise<void> {
     }
   };
 
+  const markExportedMeasurementsUnavailable = (): void => {
+    const residualValues =
+      document.querySelectorAll<HTMLElement>("#residual-list dd");
+    Array.from(residualValues)
+      .slice(0, 3)
+      .forEach((value) => {
+        value.textContent =
+          "Unavailable because the exported world did not load";
+      });
+  };
+
   const setGenusControls = (genus: SupportedGenus, disabled: boolean): void => {
     genusButtons.forEach((button) => {
       button.disabled = disabled;
@@ -591,6 +628,7 @@ async function start(): Promise<void> {
     presetById = new Map(
       bundle.metadata.routePresets.map((preset) => [preset.id, preset]),
     );
+    journey = reduceJourney(journey, { type: "WORLD_DATA_AVAILABLE" });
     journey = reduceJourney(journey, {
       type: "WORLD_CHANGED",
       routeIds: bundle.metadata.routePresets.map((preset) => preset.id),
@@ -607,11 +645,18 @@ async function start(): Promise<void> {
     genus: SupportedGenus,
     initial = false,
   ): Promise<boolean> => {
-    if (loadingGenus || (!initial && genus === activeGenus && activeBundle)) {
+    if (
+      loadingGenus ||
+      journey.heatAnimating ||
+      (!initial && genus === activeGenus && activeBundle)
+    ) {
       return false;
     }
     loadingGenus = true;
+    window.clearTimeout(loadingHideTimer);
+    loadingHideTimer = 0;
     clearFallbackHeat();
+    renderJourney();
     const preservedScroll = window.scrollY;
     const wasCached = repository.isCached(genus);
     setGenusControls(genus, true);
@@ -637,13 +682,16 @@ async function start(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
       if (initial || !activeBundle) {
+        dispatch({ type: "ENTER_WRITTEN_FALLBACK" });
+        markExportedMeasurementsUnavailable();
         showFallback(
           `The exported world data could not load (${message}). The written explanation and mathematics remain available.`,
         );
       } else {
         loadingCopy.textContent = `Genus ${genus} could not load: ${message}. Select it again to retry.`;
-        window.setTimeout(() => {
+        loadingHideTimer = window.setTimeout(() => {
           loading.hidden = true;
+          loadingHideTimer = 0;
         }, 2600);
       }
       setGenusControls(activeGenus, false);
@@ -651,6 +699,7 @@ async function start(): Promise<void> {
       return false;
     } finally {
       loadingGenus = false;
+      renderJourney();
     }
   };
 
@@ -711,6 +760,7 @@ async function start(): Promise<void> {
   };
 
   const replay = (): void => {
+    if (loadingGenus) return;
     clearFallbackHeat();
     window.clearTimeout(openingTransitionTimer);
     window.clearTimeout(journeyFocusTimer);
@@ -809,6 +859,7 @@ async function start(): Promise<void> {
   );
 
   releaseButton.addEventListener("click", () => {
+    if (loadingGenus) return;
     if (!dispatch({ type: "RELEASE_HEAT" })) return;
     if (worldScene) worldScene.releaseHeat();
     else completeFallbackHeat();
@@ -842,27 +893,6 @@ async function start(): Promise<void> {
   backToWorld.addEventListener("click", (event) =>
     navigateWithoutHash(event, 0),
   );
-
-  const blockOpeningNavigation = (event: Event): void => {
-    if (!journey.started) {
-      event.preventDefault();
-      window.scrollTo(0, 0);
-    }
-  };
-  window.addEventListener("wheel", blockOpeningNavigation, {
-    passive: false,
-    capture: true,
-  });
-  window.addEventListener("touchmove", blockOpeningNavigation, {
-    passive: false,
-    capture: true,
-  });
-  document.addEventListener("keydown", (event) => {
-    if (!journey.started && (event.key === "End" || event.key === "PageDown")) {
-      event.preventDefault();
-      window.scrollTo(0, 0);
-    }
-  });
 
   window.addEventListener("hashchange", () => {
     const id = decodeURIComponent(window.location.hash.slice(1));
@@ -900,6 +930,8 @@ async function start(): Promise<void> {
     await switchWorld(manifest.defaultGenus, true);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
+    dispatch({ type: "ENTER_WRITTEN_FALLBACK" });
+    markExportedMeasurementsUnavailable();
     showFallback(
       `The exported world data could not load (${message}). The written explanation and mathematics remain available.`,
     );
@@ -909,6 +941,7 @@ async function start(): Promise<void> {
   window.addEventListener(
     "beforeunload",
     () => {
+      window.clearTimeout(loadingHideTimer);
       clearFallbackHeat();
       worldScene?.destroy();
     },

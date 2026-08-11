@@ -234,6 +234,87 @@ test("a fresh visit is a true locked opening at every viewport", async ({
   expect(errors).toEqual([]);
 });
 
+test("short reflowed viewports keep the opening and active stage reachable", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Exercise the short-height layout once.",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 320, height: 256 });
+  await openReady(page);
+  const opening = page.locator("#opening-screen");
+  await expect
+    .poll(() =>
+      opening.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await opening.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  expect(
+    await opening.evaluate((element) => element.scrollTop),
+  ).toBeGreaterThan(0);
+  await page.locator("#start-button").scrollIntoViewIfNeeded();
+  await expect(page.locator("#start-button")).toBeInViewport();
+
+  await page.setViewportSize({ width: 667, height: 320 });
+  await begin(page);
+  for (const act of [0, 1, 2]) await proceed(page, act);
+  await page.locator("#route-buttons button").first().click();
+  await proceed(page, 3);
+  await page.locator("#release-button").click();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-heat-released",
+    "true",
+  );
+  for (const act of [4, 5, 6]) await proceed(page, act);
+  const shortLayout = await page.evaluate(() => {
+    const stage = document
+      .querySelector("#world-stage")!
+      .getBoundingClientRect();
+    const canvas = document
+      .querySelector(".canvas-frame")!
+      .getBoundingClientRect();
+    const caption = document
+      .querySelector("#scene-caption")!
+      .getBoundingClientRect();
+    const footer = document
+      .querySelector(".stage-footer")!
+      .getBoundingClientRect();
+    return {
+      stageHeight: stage.height,
+      canvasHeight: canvas.height,
+      captionBottom: caption.bottom,
+      footerTop: footer.top,
+    };
+  });
+  expect(shortLayout.stageHeight).toBeLessThan(310);
+  expect(shortLayout.canvasHeight).toBeGreaterThanOrEqual(100);
+  expect(shortLayout.canvasHeight).toBeLessThanOrEqual(151);
+  expect(shortLayout.captionBottom).toBeLessThanOrEqual(
+    shortLayout.footerTop + 1,
+  );
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(100);
+  const landscapeLayout = await page.evaluate(() => {
+    const stage = document
+      .querySelector("#world-stage")!
+      .getBoundingClientRect();
+    const canvas = document
+      .querySelector(".canvas-frame")!
+      .getBoundingClientRect();
+    return { stageHeight: stage.height, canvasHeight: canvas.height };
+  });
+  expect(landscapeLayout.stageHeight).toBeLessThan(390);
+  expect(landscapeLayout.canvasHeight).toBeLessThanOrEqual(151);
+  await expectNoHorizontalOverflow(page);
+});
+
 test("the complete guided journey unlocks one chapter at a time", async ({
   page,
 }, testInfo) => {
@@ -257,6 +338,7 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   await expect(canvas).toHaveAttribute("data-topology", "genus-2");
   await expect(canvas).toHaveAttribute("data-native-routes", "true");
   await expect(canvas).toHaveAttribute("data-heat-mode", "idle");
+  await expect(page.locator("#focus-route-start")).toBeDisabled();
   await expect(page.locator("#arrival [data-math] .katex")).toHaveCount(1);
   await expect(page.locator(".stage-header .view-controls button")).toHaveCount(
     4,
@@ -367,6 +449,7 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   }
   expect(measuredRoutes.size).toBe(3);
   await expect(page.locator("#route-proceed")).toBeEnabled();
+  await expect(page.locator("#focus-route-start")).toBeEnabled();
 
   await proceed(page, 3);
   await expect(page.locator("body")).toHaveAttribute(
@@ -403,10 +486,24 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   });
   await page.locator("#release-button").click();
   await expect(canvas).toHaveAttribute("data-heat-mode", "animation");
+  await expect(page.locator("button[data-genus]:not(:disabled)")).toHaveCount(
+    0,
+  );
+  await page.waitForTimeout(600);
+  await page.locator("#arrival").scrollIntoViewIfNeeded();
+  await expect(page.locator("body")).toHaveAttribute("data-active-act", "0");
   await expect(canvas).toHaveAttribute("data-heat-mode", "released", {
     timeout: 7_000,
   });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-heat-released",
+    "true",
+  );
+  await expect(page.locator("button[data-genus]:not(:disabled)")).toHaveCount(
+    3,
+  );
   await expect(canvas).toHaveAttribute("data-heat-progress", "1.000");
+  await expect(canvas).toHaveAttribute("data-heat-exposure", "0.840");
   expect(
     await page.evaluate(
       () => (window as Window & { __heatFrames?: string[] }).__heatFrames,
@@ -414,9 +511,26 @@ test("the complete guided journey unlocks one chapter at a time", async ({
   ).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
   await expect(page.locator("#release-button")).toBeDisabled();
   await expect(page.locator("#release-button")).toHaveText("Heat released");
+  await page.locator("#release-heat").scrollIntoViewIfNeeded();
+  await expect(page.locator("body")).toHaveAttribute("data-active-act", "4");
   await expect(page.locator("#heat-proceed")).toBeEnabled();
+  await testInfo.attach("final-heat-exposure", {
+    body: await canvas.screenshot(),
+    contentType: "image/png",
+  });
 
   await proceed(page, 4);
+  await expect(canvas).toHaveAttribute("data-gradient-flow", "animated");
+  const gradientPhase = await canvas.getAttribute("data-gradient-flow-phase");
+  await page.waitForTimeout(120);
+  await expect(canvas).not.toHaveAttribute(
+    "data-gradient-flow-phase",
+    gradientPhase ?? "",
+  );
+  await testInfo.attach("gradient-direction-flow", {
+    body: await canvas.screenshot(),
+    contentType: "image/png",
+  });
   await proceed(page, 5);
   await expect(page.locator("#math-title")).toBeInViewport();
   await expect(page.locator("#compare-routes")).toBeHidden();
@@ -689,31 +803,28 @@ test("world bundles load lazily and cache after selection", async ({
   }
 
   await begin(page);
+  const explore = page.locator("#explore-view");
+  const canvas = page.locator("#world-canvas");
+  await explore.click();
+  await expect(explore).toHaveAttribute("aria-pressed", "true");
+  await expect(canvas).toHaveClass(/is-exploring/);
   await page.locator('button[data-genus="3"]').click();
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-topology",
-    "genus-3",
-  );
+  await expect(canvas).toHaveAttribute("data-topology", "genus-3");
+  await expect(explore).toHaveAttribute("aria-pressed", "false");
+  await expect(explore).toHaveText("Explore view");
+  await expect(canvas).not.toHaveClass(/is-exploring/);
+  await expect(canvas).toHaveAttribute("data-user-interacting", "false");
   expect(
     worldRequests.filter((path) => path.includes("/genus-3/")),
   ).toHaveLength(2);
   await page.locator('button[data-genus="1"]').click();
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-topology",
-    "genus-1",
-  );
+  await expect(canvas).toHaveAttribute("data-topology", "genus-1");
   expect(
     worldRequests.filter((path) => path.includes("/genus-1/")),
   ).toHaveLength(2);
   await page.locator('button[data-genus="3"]').click();
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-topology",
-    "genus-3",
-  );
-  await expect(page.locator("#world-canvas")).toHaveAttribute(
-    "data-load-source",
-    "cache",
-  );
+  await expect(canvas).toHaveAttribute("data-topology", "genus-3");
+  await expect(canvas).toHaveAttribute("data-load-source", "cache");
   expect(
     worldRequests.filter((path) => path.includes("/genus-3/")),
   ).toHaveLength(2);
@@ -991,6 +1102,25 @@ test("corrupt native data still opens a dark written fallback", async ({
   await expect(page.locator("#webgl-fallback")).toContainText(
     "written explanation",
   );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-written-fallback",
+    "true",
+  );
   await expectBlackSurface(page, "#webgl-fallback");
+  for (const act of [0, 1, 2]) await proceed(page, act);
+  await expect(page.locator("#route-buttons button")).toHaveCount(0);
+  await expect(page.locator("#route-proceed")).toBeEnabled();
+  await proceed(page, 3);
+  await expect(page.locator("#release-button")).toBeHidden();
+  await expect(page.locator("#heat-proceed")).toBeEnabled();
+  for (const act of [4, 5, 6, 7, 8, 9]) await proceed(page, act);
+  await expect(page.locator("#mathematics [data-math] .katex")).not.toHaveCount(
+    0,
+  );
+  await expect(page.locator("#residual-list dd").first()).toContainText(
+    "Unavailable",
+  );
+  await expect(page.locator("#compare-routes")).toBeHidden();
+  await expect(page.locator("#site-footer")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });

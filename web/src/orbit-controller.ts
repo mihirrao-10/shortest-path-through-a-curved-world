@@ -251,6 +251,7 @@ export class OrbitController {
 
   destroy(): void {
     if (this.disposed) return;
+    const wasExploring = this.exploreEngaged;
     this.disposed = true;
     this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
@@ -274,6 +275,11 @@ export class OrbitController {
       this.handleGestureEnd as EventListener,
     );
     this.pointers.clear();
+    this.exploreEngaged = false;
+    this.canvas.classList.remove("is-exploring", "is-dragging");
+    this.canvas.dataset.exploreView = "false";
+    this.canvas.dataset.userInteracting = "false";
+    if (wasExploring) this.onExploreChange?.(false);
   }
 
   private snapToDesired(): void {
