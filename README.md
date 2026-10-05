@@ -52,7 +52,7 @@ Low-frequency terms introduce unequal lobes, a broad ridge, a shallow basin and 
 
 ## Build and test
 
-Requirements are CMake 3.22 or newer, a C++20 compiler, and Eigen 3.4. CMake fetches the pinned Eigen 3.4.0 archive when Eigen is not installed.
+Requirements are CMake 3.24 or newer, a C++20 compiler, and Eigen 3.4. CMake fetches the pinned Eigen 3.4.0 archive when Eigen is not installed.
 
 ~~~sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -60,7 +60,7 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ~~~
 
-Build and check the static site:
+Build and check the static site with Node 20.19+ or 22.12+ (required by Vite 7):
 
 ~~~sh
 cd web
@@ -227,8 +227,7 @@ This repository's implicit multi-handle generator, marching tetrahedra extractor
 - data/: schema and canonical benchmark JSON
 - web/src/: parser, tracer, orbit controller, Three.js scene, and story logic
 - web/e2e/: browser behavior and responsive tests
-- docs/interview-guide.md: technical explanation prompts
-- docs/course-map.md: study map from Crane's material to exact code
+- docs/study-guide.md: technical explanation prompts and theory-to-code study map
 
 ## References
 
